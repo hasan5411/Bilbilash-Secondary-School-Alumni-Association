@@ -2,7 +2,9 @@
 -- BILBILASH ALUMNI COMMUNITY MANAGEMENT SYSTEM — PostgreSQL schema
 -- (Supabase-compatible. Ported field-for-field from database/schema.sql)
 --
--- Idempotent: safe to run multiple times. No DROP/TRUNCATE of data.
+-- Idempotent: safe to run multiple times (CREATE ... IF NOT EXISTS everywhere;
+-- updated_at triggers are DROPped-if-exists and recreated — objects only, no
+-- data is ever dropped or truncated).
 -- Encoding: UTF8 (PostgreSQL default). Naming: snake_case (unchanged).
 --
 -- Mapping rules applied (MySQL → PostgreSQL), each deliberate:
@@ -66,6 +68,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS idx_users_status ON users (status);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users (role_id);
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -95,6 +98,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 CREATE INDEX IF NOT EXISTS idx_profiles_batch ON profiles (ssc_batch);
 CREATE INDEX IF NOT EXISTS idx_profiles_blood ON profiles (blood_group);
 CREATE INDEX IF NOT EXISTS idx_profiles_profession ON profiles (profession);
+DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
 CREATE TRIGGER trg_profiles_updated_at BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -131,6 +135,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs (status);
 CREATE INDEX IF NOT EXISTS idx_jobs_posted_by ON jobs (posted_by);
+DROP TRIGGER IF EXISTS trg_jobs_updated_at ON jobs;
 CREATE TRIGGER trg_jobs_updated_at BEFORE UPDATE ON jobs
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -162,6 +167,7 @@ CREATE TABLE IF NOT EXISTS visions (
   CONSTRAINT fk_visions_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_visions_status ON visions (status);
+DROP TRIGGER IF EXISTS trg_visions_updated_at ON visions;
 CREATE TRIGGER trg_visions_updated_at BEFORE UPDATE ON visions
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -185,6 +191,7 @@ CREATE TABLE IF NOT EXISTS help_requests (
   CONSTRAINT fk_help_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_help_status ON help_requests (status);
+DROP TRIGGER IF EXISTS trg_help_requests_updated_at ON help_requests;
 CREATE TRIGGER trg_help_requests_updated_at BEFORE UPDATE ON help_requests
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -207,6 +214,7 @@ CREATE TABLE IF NOT EXISTS events (
   CONSTRAINT fk_events_user FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_events_date ON events (event_date);
+DROP TRIGGER IF EXISTS trg_events_updated_at ON events;
 CREATE TRIGGER trg_events_updated_at BEFORE UPDATE ON events
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -233,6 +241,7 @@ CREATE TABLE IF NOT EXISTS notices (
   CONSTRAINT fk_notices_user FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_notices_status ON notices (status);
+DROP TRIGGER IF EXISTS trg_notices_updated_at ON notices;
 CREATE TRIGGER trg_notices_updated_at BEFORE UPDATE ON notices
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -278,6 +287,7 @@ CREATE TABLE IF NOT EXISTS polls (
   CONSTRAINT ck_polls_status CHECK (status IN ('draft','open','closed')),
   CONSTRAINT fk_polls_user FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE CASCADE
 );
+DROP TRIGGER IF EXISTS trg_polls_updated_at ON polls;
 CREATE TRIGGER trg_polls_updated_at BEFORE UPDATE ON polls
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -330,6 +340,7 @@ CREATE TABLE IF NOT EXISTS teachers (
   updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_teachers_user FOREIGN KEY (created_by) REFERENCES users(user_id) ON DELETE SET NULL ON UPDATE CASCADE
 );
+DROP TRIGGER IF EXISTS trg_teachers_updated_at ON teachers;
 CREATE TRIGGER trg_teachers_updated_at BEFORE UPDATE ON teachers
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -391,6 +402,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_type ON payments (payment_type);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status);
 CREATE INDEX IF NOT EXISTS idx_payments_date ON payments (payment_date);
 CREATE INDEX IF NOT EXISTS idx_payments_billing_month ON payments (billing_month);
+DROP TRIGGER IF EXISTS trg_payments_updated_at ON payments;
 CREATE TRIGGER trg_payments_updated_at BEFORE UPDATE ON payments
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 

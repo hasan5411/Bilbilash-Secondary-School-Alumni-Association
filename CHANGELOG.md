@@ -58,3 +58,31 @@ Executed and passing:
 - Events and notices have no image-upload UI yet.
 - No rate limiting on auth endpoints.
 - The database-name decision (new `bilbilash_alumni_v2` vs. replacing the old `bilbilash_alumni`) is pending the developer's approval, because replacing it would destroy the old data.
+
+---
+
+## Production Authority Initialization Fix — 2026-10-14
+
+### Root cause (confirmed by code + live production inspection)
+- Production (Render + Supabase) had the schema and a working Member registration but no AUTHORITY account, so the first Authority login returned 401 `Invalid email or password`.
+- The Authority account is created ONLY by the manual `npm run init-db` / `npm run authority:set-password` scripts — nothing in the Render deploy path (`npm start`) ever seeded it, and the deployment guide never told the operator to run `init-db` against the production database.
+- Worse, on PostgreSQL `init-db` was not re-runnable at all: the second `CREATE TRIGGER` failed with `42710 already exists`, aborting the script BEFORE the Authority seed. Any attempt to run it against the already-created production schema could only fail.
+- Render env vars were NOT the problem: `env.js` hard-requires `AUTHORITY_EMAIL`/`AUTHORITY_PASSWORD` at boot, and the live health endpoint answers 200 — so the server proves those variables exist.
+
+### Changed
+- `database/schema.postgresql.sql` — all 10 `updated_at` triggers are now `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` (objects only, never data) so the schema file and `npm run init-db` are genuinely re-runnable on an existing database.
+- `backend/src/db/authoritySeed.js` (new) — shared Authority seed: role_id resolved from the `roles` table (never hardcoded), bcrypt cost 12 (same as login), `INSERT ... ON CONFLICT (email) DO NOTHING` (race-safe, duplicate-proof), create-only (an existing account's password/role/status are never modified), and a hard refusal when `AUTHORITY_EMAIL` belongs to a non-Authority account (closes the register-with-the-Authority-email privilege-escalation hole). All reporting is credential-free.
+- `backend/src/db/initDb.js` — uses the shared seed; the old "align role/status on existing account" behavior (silent promotion) is removed; conflict now exits 1 with an actionable message.
+- `backend/src/db/setAuthorityPassword.js` — uses the shared seed in explicit recovery mode: resets the password of the AUTHORITY-role account only, bumps `token_version`; refuses (exit 1, no writes) any account of another role.
+- `GUIDE.md` — Section E now documents the one-time production init (`npm run init-db` via Render Shell), the recovery command, login verification, and a troubleshooting row for the Authority 401.
+
+### Added
+- `backend/tests/authorityInitTest.js` (`npm run authority-init-test`) — 63 assertions against the real scripts and the real API: init-db idempotency (run twice, no duplicate, hash untouched, password never printed), seed unit behavior (create/exists/concurrency/validation), the escalation guard (module + real script exit 1 with the member row untouched), login accept/reject (indistinguishable 401s, no enumeration, no hash/token leakage), pending-JWT blocking, the full approval RBAC matrix, recovery-script behavior, and no-credential-leak checks.
+
+### Database changes
+- None to existing data. A production run of `npm run init-db` applies missing objects idempotently and creates the single Authority account from Render's env vars.
+
+### Testing
+- `npm run authority-init-test` → **63 passed, 0 failed** (exit 0) vs local embedded PostgreSQL 17.
+- Regression, all exit 0: smoke **172/0**, contribution **117/0**, profile **74/0**, demo-e2e **54/0**, upload **28/0**.
+- Production `/api/health` read-only live check: `status ok, database connected, db_ok true` (HTTP 200). Production Authority login itself is verified only after the operator runs the documented one-time init step (see `AUTHORITY_INIT_FIX_REPORT.md`).

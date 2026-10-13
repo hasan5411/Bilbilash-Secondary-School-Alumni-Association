@@ -258,7 +258,7 @@ git push
 | Runtime | Node |
 | Build Command | `npm install` |
 | Start Command | `npm start` (অর্থাৎ `node src/server.js`) |
-| Health Check Path | `/api/health` (এই endpoint স্থানীয় backend-এ verified; Render-এ live যাচাই হবে প্রথম deploy-এর পর — এখনো কোনো deployed URL নেই) |
+| Health Check Path | `/api/health` (live যাচাই করা 2026-10-14: deployed URL-এ HTTP 200, `status ok` + `database connected`) |
 
 3. **Environment Variables** (Dashboard → Environment) — শুধু এখানে, কোডে নয়:
 
@@ -276,10 +276,43 @@ git push
 `ALLOW_DEV_OTP` **কখনোই** production-এ সেট করবেন না। `PORT` Render নিজে সেট করে — অ্যাপ
 `process.env.PORT` পড়ে, তাই আলাদা কিছু করতে হবে না (verified: `env.port`)।
 
-4. Deploy শেষে (এখনো করা হয়নি — আপনার approval ও account লাগবে):
-   `https://আপনার-service.onrender.com/api/health` দেখাবে
-   `{"data":{"status":"ok","database":"connected"}}` — তখনই বলা যাবে backend +
-   Supabase connectivity live কাজ করছে। এই গাইডে কোনো deployed URL-এর দাবি নেই।
+4. Health check — **live যাচাই করা হয়েছে (2026-10-14):**
+   `https://bilbilash-secondary-school-alumni.onrender.com/api/health` দেয়
+   `{"data":{"status":"ok","database":"connected","db_ok":true}}` (HTTP 200) —
+   backend + Supabase connectivity production-এ কাজ করছে।
+
+5. **Production database ও Authority account একবার initialize করুন** — এটাই প্রথম
+   Authority login-এর 401-এর মূল কারণ ছিল: deploy শুরু হলে schema/Authority যায় না,
+   ধাপটি ম্যানুয়াল। Render Dashboard → এই Web Service → **Shell** ট্যাব থেকে:
+
+       npm run init-db
+
+   এটি (idempotent — বারবার চালানো নিরাপদ, এই code-এ যাচাই করা):
+   - `database/schema.postgresql.sql` প্রয়োগ করে (table/index `IF NOT EXISTS`,
+     trigger-ও এখন re-runnable; **কোনো data drop হয় না**),
+   - roles বসায়,
+   - `AUTHORITY_EMAIL` / `AUTHORITY_PASSWORD` দিয়ে **একটিমাত্র** Authority account
+     তৈরি করে (bcrypt hash; duplicate হয় না; আগে থাকলে password/role/status
+     **কখনো বদলায় না**; password কখনোই console-এ দেখায় না)।
+
+   শেষে `[init-db] DONE.` দেখা উচিত — এরপর সঙ্গে সঙ্গে ধাপ ৬ করুন। Shell ট্যাব না থাকলে
+   (কিছু plan-এ বন্ধ): Start Command সাময়িকভাবে `npm run init-db && npm start` করে
+   একটি redeploy দিন, তারপর Start Command আবার `npm start`-এ ফেরান।
+
+6. **Authority login যাচাই + pending Member approve:**
+   - Vercel URL → Login → `AUTHORITY_EMAIL` / `AUTHORITY_PASSWORD` (Render-এ যা
+     সেট করেছেন ঠিক সেটাই) → লগইন সফল হবে এবং প্রোফাইলে Role: `AUTHORITY` দেখা যাবে।
+   - এরপর Moderation/Pending Members থেকে pending Member-কে approve করুন।
+   - ভুল password-এ 401 `Invalid email or password` পাবেন; **ঠিক password-এও 401**
+     দিলে account এখনো তৈরি হয়নি — ধাপ ৫-এ `npm run init-db` চালান।
+
+7. **Password ভুলে গেলে / account ঠিক করতে হলে (explicit recovery):** Shell থেকে
+
+       npm run authority:set-password
+
+   env-এর `AUTHORITY_PASSWORD` দিয়ে ঠিক AUTHORITY account-এর password বসায় ও
+   পুরনো session বাতিল করে। অন্য কোনো ব্যবহারকারীর account-ে (যার ভূমিকা অন্যরকম)
+   এটি কখনো হাত লাগায় না — `REFUSING` error দিয়ে থামে, কিছু বদলায় না।
 
 > মনে রাখবেন: Render free tier-এ dyno কিছুক্ষণ পর sleep করে; প্রথম request-এ ৩০-৫০ সেকেন্ড
 > দেরি হতে পারে। Database query pool `connectionLimit: 10` — pooler URI ব্যবহার করলে
@@ -379,6 +412,7 @@ Production deploy-এর পর প্রতিটি ধাপে হাতে-
 |---|---|
 | Build fail (Vercel/Render) | Root Directory ঠিক আছে কিনা দেখুন (`frontend` / `backend`)। `npm install` Node 18+ চায়। lockfile ভাঙবেন না। |
 | `Missing required environment variable: JWT_SECRET` | Render/Vercel-এ env var সেট হয়নি। Backend ইচ্ছাকৃতভাবে এদের ছাড়া শুরু হয় না। |
+| Authority login 401 (সঠিক credential দিয়েও) | production database-এ Authority account নেই | Render Shell থেকে `npm run init-db` চালান (idempotent; duplicate হয় না); প্রয়োজনে `npm run authority:set-password` (Section E, ধাপ ৫-৭)। ধাপ চালানোর পর যাচাই: যেকোনো ব্যবহারকারীকে approve করতে পারেন এমন একটি Admin/Authority দিয়ে Moderation খুলুন, অথবা Supabase SQL Editor-এ `SELECT user_id, email, status, r.role_name FROM users u JOIN roles r ON r.role_id=u.role_id WHERE r.role_name='AUTHORITY';` — ঠিক একটি row, `status='approved'` (password hash দেখার দরকার নেই) |
 | `Database is unavailable … 503` | `DATABASE_URL` ভুল, অথবা Supabase pooler URI (6543) নয় direct URI বসানো। `sslmode=require` আছে কিনা দেখুন। |
 | `password authentication failed` / `28P01` | password বা user ভুল; Supabase Dashboard-এ reset করে URL আপডেট করুন। |
 | `3D000 invalid_catalog_name` | URL-এর database নাম ভুল (Supabase-এ সাধারণত `postgres`)। |

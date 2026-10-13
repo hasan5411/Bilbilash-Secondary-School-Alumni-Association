@@ -1,9 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import bcrypt from 'bcryptjs';
 import pg from 'pg';
 import { env, rootDir } from '../config/env.js';
 import { dbConnectionConfig } from './pool.js';
+import {
+  ensureAuthorityAccount, describeAuthorityResult,
+  authorityResultIsFailure, authorityResultNeedsWarning,
+} from './authoritySeed.js';
 
 /**
  * Idempotent PostgreSQL initializer (migrated from MySQL):
@@ -56,41 +59,24 @@ async function main() {
     await client.query(schemaSql); // multi-statement, idempotent
     console.log('[init-db] Schema applied (idempotent).');
 
-    // ----- Authority seed -----
-    if (!env.authorityEmail || !env.authorityPassword) {
-      throw new Error('AUTHORITY_EMAIL / AUTHORITY_PASSWORD missing in .env');
-    }
+    // ----- Authority seed (create-only, race-safe, never overwrites) -----
     const email = env.authorityEmail.trim().toLowerCase();
-    const { rows: roles } = await client.query(
-      "SELECT role_id FROM roles WHERE role_name = 'AUTHORITY' LIMIT 1"
-    );
-    if (!roles.length) throw new Error('AUTHORITY role missing — schema seed failed');
-    const authorityRoleId = roles[0].role_id;
-
-    const { rows: existing } = await client.query(
-      'SELECT user_id FROM users WHERE email = $1 LIMIT 1',
-      [email]
-    );
-    if (existing.length) {
-      // Idempotent: keep single Authority account, align role/status only.
-      await client.query(
-        "UPDATE users SET role_id = $1, status = 'approved', is_active = 1 WHERE user_id = $2 AND role_id <> $1",
-        [authorityRoleId, existing[0].user_id]
+    const result = await ensureAuthorityAccount(client, {
+      email,
+      password: env.authorityPassword,
+    });
+    console.log(`[init-db] ${describeAuthorityResult(email, result)}`);
+    if (authorityResultNeedsWarning(result)) {
+      console.warn(
+        `[init-db] WARNING: the Authority account cannot log in while status='${result.status}', is_active=${result.isActive}. ` +
+        'If this is unintended, run: npm run authority:set-password (explicit recovery; only ever touches the AUTHORITY account).'
       );
-      console.log('[init-db] Authority account already exists — no duplicate created.');
-    } else {
-      const hash = await bcrypt.hash(env.authorityPassword, 12);
-      const { rows } = await client.query(
-        `INSERT INTO users (role_id, first_name, last_name, email, password_hash, status, is_active)
-         VALUES ($1, 'Authority', 'System', $2, $3, 'approved', 1)
-         RETURNING user_id`,
-        [authorityRoleId, email, hash]
+    }
+    if (authorityResultIsFailure(result)) {
+      throw new Error(
+        'AUTHORITY_EMAIL is taken by a non-Authority account — it was NOT modified or promoted. ' +
+        'See the message above and resolve it manually, then re-run npm run init-db.'
       );
-      await client.query(
-        `INSERT INTO profiles (user_id, bio) VALUES ($1, 'System authority account')`,
-        [rows[0].user_id]
-      );
-      console.log(`[init-db] Authority account created for ${email}.`);
     }
     console.log('[init-db] DONE.');
   } finally {

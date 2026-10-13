@@ -14,7 +14,8 @@
     "profile-test": "node tests/profileCompletionTest.js",
     "seed-demo": "node tests/seedDemo.js",
     "demo-e2e": "node tests/demoE2E.js",
-    "upload-test": "node tests/uploadStorageTest.js"
+    "upload-test": "node tests/uploadStorageTest.js",
+    "authority-init-test": "node tests/authorityInitTest.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
