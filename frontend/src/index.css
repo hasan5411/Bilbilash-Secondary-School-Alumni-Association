@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #5fef45;        /* green-teal */
+  --color-brand-dark: #09b05c;
+  --color-sun: #eab308;          /* yellow */
+  --color-sky: #7dd3fc;          /* powder blue */
+  --color-ice: #f0f9ff;          /* near-white blue */
+
+  /* Forest palette — interior pages only. Additive tokens: the legacy brand
+     colors above stay untouched so the Home page renders exactly as before. */
+  --color-forest: #0f4c3a;       /* primary dark green */
+  --color-moss: #176b50;         /* secondary green */
+  --color-mint: #f1f8f4;         /* light green background */
+  --color-mist: #e5f2e9;         /* hover background */
+  --color-ink: #24332d;          /* main text */
+  --color-ink-soft: #64746b;     /* secondary text */
+  --color-line: #dce8e0;         /* subtle border */
+}
+
+body {
+  @apply bg-ice text-slate-800 antialiased;
+}

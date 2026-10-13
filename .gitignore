@@ -1,0 +1,27 @@
+.env
+.env.local
+.env.*.local
+node_modules/
+dist/
+build/
+coverage/
+logs/
+*.log
+npm-debug.log*
+uploads/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local development database cluster (embedded PostgreSQL dev/test server)
+.pgdata/
+
+# Preserved project backups — must never enter git history
+.backups/
+
+# Agent workspace metadata
+.freebuff/
+
+# Generated reconciliation artifact (may contain payment test data)
+backend/reconciliation-report.json
