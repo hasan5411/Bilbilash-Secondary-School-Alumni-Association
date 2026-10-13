@@ -49,5 +49,13 @@ const API_BASE = import.meta.env.VITE_API_BASE || '';
  */
 export function mediaUrl(ref) {
   if (!ref) return null;
-  return /^https?:\/\//i.test(ref) ? ref : `${API_BASE}/uploads/${ref}`;
+  const s = String(ref);
+  if (!/^https?:\/\//i.test(s)) return `${API_BASE}/uploads/${s}`;
+  // Supabase Storage ref: signed URLs (`/object/sign/…?token=…`) EXPIRE, which
+  // breaks every avatar/gallery image after the token lifetime. Both buckets
+  // are public, so rewrite any sign/authenticated ref (and drop its token) to
+  // the stable public form. Non-Storage URLs pass through untouched.
+  const m = /^(https?:\/\/[^?#]+\/storage\/v1\/object\/)(?:sign|public|authenticated)\/([^?#]+)[?#]?.*$/.exec(s);
+  if (m) return `${m[1]}public/${m[2]}`;
+  return s;
 }

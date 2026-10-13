@@ -48,10 +48,28 @@ export const STORAGE_BUCKETS = {
 export const PROFILE_IMAGE_MAX_BYTES = 1 * 1024 * 1024; // 1 MB — profile-images bucket limit
 export const GALLERY_IMAGE_MAX_BYTES = 3 * 1024 * 1024; // 3 MB — gallery-images bucket limit
 
+/**
+ * Normalize a Supabase Storage reference to its STABLE PUBLIC form.
+ *
+ * Signed URLs (`/storage/v1/object/sign/<bucket>/<path>?token=…`) are
+ * short-lived by design — they expire and the image404s afterwards. Our own
+ * upload path never produces them (only `/object/public/…`), but refs can
+ * arrive signed from outside (Supabase dashboard "Get URL", hand-edited DB
+ * rows). Both buckets are PUBLIC, so every such ref is rewritten to the
+ * permanent public form and the expiring token is stripped.
+ * Non-Supabase URLs and non-absolute refs are returned unchanged.
+ */
+export function normalizeStorageRef(ref) {
+  const s = String(ref || '');
+  const m = /(\/storage\/v1\/object\/)(?:sign|public|authenticated)\/([^?#]+)/.exec(s);
+  if (!m) return ref;
+  return `${s.slice(0, m.index)}${m[1]}public/${m[2]}`;
+}
+
 /** DB reference -> URL the browser can request. */
 export function resolveUploadRef(ref) {
   if (!ref) return null;
-  if (isAbsoluteRef(ref)) return ref;
+  if (isAbsoluteRef(ref)) return normalizeStorageRef(ref);
   return `/uploads/${path.basename(String(ref))}`;
 }
 
@@ -87,6 +105,9 @@ export async function persistUpload(file, { bucket = null, prefix = null, maxByt
 export async function removeUpload(ref) {
   if (!ref) return false;
   if (isAbsoluteRef(ref)) {
+    // A signed ref (hand-pasted from the dashboard) still deletes correctly:
+    // normalize to the public shape first — the token is never needed.
+    ref = normalizeStorageRef(ref);
     // Shape-dispatch: a Supabase public URL is destroyed via the Storage API
     // regardless of the currently selected driver (the object lives there).
     const supa = parseSupabasePublicUrl(ref);

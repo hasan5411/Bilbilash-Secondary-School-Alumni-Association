@@ -380,9 +380,18 @@ git push
     `MIGRATE_UPLOADS=1` দিলেই apply) — শুধু নিজের local ফাইল থাকলে ওগুলো bucket-এ নিয়ে
     DB ref আপডেট করে; Render-এর ephemeral disk-এ ফাইল আগেই থাকে না, তাই production-এ এটি
     প্রায় no-op (প্রয়োজনে সেই ছবি আবার upload করতে হবে)।
-  - **যাচাই হয়েছে:** `npm run supabase-test` **৩৬/৩৬** ✅ (stub Storage REST server + আলাদা
+  - **Signed URL নিষিদ্ধ:** upload path কখনোই `/object/sign/…?token=…` তৈরি করে না — token expire
+    হলেই ছবি মরে যায়। ড্যাশবোর্ড বা hand-edit থেকে আসা কোনো signed ref পড়ার সময়ই স্থায়ী
+    `/object/public/…` আকারে normalize হয় (token বাদ) — frontend `mediaUrl()` ও backend
+    `resolveUploadRef()` দুটোতেই। একবার রিপেয়ার: `npm run migrate:storage-refs` (dry-run;
+    `NORMALIZE_STORAGE_REFS=1` দিলে apply)।
+  - **পাবলিক access যাচাই (কোনো key ছাড়া):** `npm run storage:verify -- <bucket>/<path> …`
+    — Render Shell-এ চালান; 200 = ছবি দেখা যাবে, 404 অর্থ বা ত object নেই বা bucket **Private**
+    (Supabase → Storage → bucket → Settings → Public bucket চালু করুন)।
+  - **যাচাই হয়েছে:** `npm run supabase-test` **৪৩/৪৩** ✅ (stub Storage REST server + আলাদা
     backend instance দিয়ে বাস্তব API matrix: avatar/teacher/gallery upload → সঠিক bucket/prefix →
-    persist → moderation → delete-এ bucket object মুছে যায়; ১ MB/৩ MB limit; 401/403) এবং
+    persist → moderation → delete-এ bucket object মুছে যায়; ১ MB/৩ MB limit; 401/403;
+    signed-URL normalization; ডাটাবেজে কোনো signed/tokenized ref নেই যাচাই) এবং
     `npm run upload-test` **২৮/২৮** ✅ (local + cloudinary driver অক্ষত)। ব্রাউজারেও যাচাই:
     upload → ছবি দেখা যায় → reload-এও থাকে → ভাঙা URL-এ initials fallback।
   - Cloudinary driver বিকল্প হিসেবে রয়ে গেছে (`CLOUDINARY_URL` + `UPLOAD_STORAGE=cloudinary`);

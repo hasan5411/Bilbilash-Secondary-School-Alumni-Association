@@ -163,6 +163,28 @@ async function partA(stubBase) {
   // — key hygiene —
   check('object key sanitizes hostile prefixes',
     /^[a-z0-9-]+\/\d+-[0-9a-f]{12}\.png$/.test(supabaseObjectKey({ filename: 'a.png' }, 'Evil Prefix!')));
+
+  // — signed-URL normalization (regression: expired signed refs must never break display) —
+  const { normalizeStorageRef, resolveUploadRef } = await import('../src/storage.js');
+  const signed = 'https://stub-project.supabase.co/storage/v1/object/sign/gallery-images/gallery/1791927791503-ff75269418a0.jpg?token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.expiring.signature';
+  check('normalizeStorageRef: signed URL -> stable public URL (token stripped)',
+    normalizeStorageRef(signed) === 'https://stub-project.supabase.co/storage/v1/object/public/gallery-images/gallery/1791927791503-ff75269418a0.jpg',
+    String(normalizeStorageRef(signed)));
+  check('normalizeStorageRef: public URL passes through unchanged',
+    normalizeStorageRef('https://stub-project.supabase.co/storage/v1/object/public/profile-images/members/a.png')
+    === 'https://stub-project.supabase.co/storage/v1/object/public/profile-images/members/a.png');
+  check('normalizeStorageRef: non-Supabase URLs and bare filenames untouched',
+    normalizeStorageRef('https://res.cloudinary.com/x/y/upload/v1/a.png') === 'https://res.cloudinary.com/x/y/upload/v1/a.png'
+    && normalizeStorageRef('1699-abc.png') === '1699-abc.png');
+  check('resolveUploadRef normalizes signed refs at the backend choke point',
+    resolveUploadRef(signed) === 'https://stub-project.supabase.co/storage/v1/object/public/gallery-images/gallery/1791927791503-ff75269418a0.jpg');
+  // A signed ref must still DELETE correctly (normalization happens first).
+  const delBeforeNorm = stubSeen.deletes.length;
+  await removeUpload(signed);
+  check('removeUpload deletes a signed ref via its normalized public shape (no token sent)',
+    stubSeen.deletes.length === delBeforeNorm + 1
+    && stubSeen.deletes[stubSeen.deletes.length - 1].url === '/storage/v1/object/gallery-images/gallery/1791927791503-ff75269418a0.jpg'
+    && !stubSeen.deletes[stubSeen.deletes.length - 1].url.includes('token='));
   check('gallery 3 MB cap constant matches the bucket',
     (await import('../src/storage.js')).GALLERY_IMAGE_MAX_BYTES === 3 * 1024 * 1024);
 
@@ -320,6 +342,21 @@ async function partB(stubBase) {
     const sawDelete = stubSeen.deletes.slice(delBefore).some((d) => d.url === `/storage/v1/object/gallery-images/${parsePath(galRef)}`);
     check('authority deletes gallery item -> 200 and the object is removed from the bucket',
       del.status === 200 && sawDelete, `status ${del.status} deletes=${JSON.stringify(stubSeen.deletes.slice(delBefore))}`);
+
+    // ── regression: no stored ref may EVER be a signed URL or carry a token ──
+    check('no API-returned ref contains /object/sign/ or token=',
+      !/\/object\/sign\/|token=/.test(String(newPhoto) + String(teacher?.photo || '')),
+      `${newPhoto} ${teacher?.photo}`);
+    const conn2 = await openTestDb();
+    const [badRefs] = await conn2.query(
+      `SELECT (SELECT COUNT(*) FROM profiles WHERE profile_photo LIKE '%/object/sign/%' OR profile_photo LIKE '%token=%')
+            + (SELECT COUNT(*) FROM teachers WHERE photo LIKE '%/object/sign/%' OR photo LIKE '%token=%')
+            + (SELECT COUNT(*) FROM gallery WHERE image_path LIKE '%/object/sign/%' OR image_path LIKE '%token=%')
+            + (SELECT COUNT(*) FROM payments WHERE screenshot_path LIKE '%/object/sign/%' OR screenshot_path LIKE '%token=%') AS cnt`
+    );
+    await conn2.end();
+    check('database holds zero signed/tokenized image refs in any image column',
+      Number(badRefs?.[0]?.cnt) === 0, `count=${badRefs?.[0]?.cnt}`);
 
     // ── cleanup: teacher row (photo object removed too) ──
     await call(base, 'DELETE', `/api/teachers/${teacherId}`, { token: authToken });

@@ -114,3 +114,27 @@ Executed and passing:
 - `npm run supabase-test` → **36/36** (exit 0); `npm run upload-test` → **28/28**; regression: smoke **172/0**, contribution **117/0**, profile **74/0**, demo-e2e **54/0**, authority-init **63/0**; frontend `vite build` ✓.
 - Browser (Vite dev + local backend, real UI): member login → Profile shows photo loaded cross-origin via `VITE_API_BASE`; canvas-generated PNG uploaded through the actual file input → "Profile updated" → image renders; full reload → still renders; dead URL injected → initials fallback (no broken icon); console clean.
 - Not verified here: a REAL Supabase project round-trip (needs your `SUPABASE_URL`/service key on Render — stub-verified protocol, identical REST shape).
+
+---
+
+## Signed-URL Normalization + Storage Access Verification — 2026-10-14
+
+### Root cause analysis (production images not displaying)
+- Objects exist in both buckets at exactly the driver's key patterns, and the deployed Vercel bundle is the current build (verified: bundle contains the `VITE_API_BASE` mediaUrl fix + GalleryImage fallback) — so upload and frontend code paths are healthy.
+- No committed code path anywhere produces `/storage/v1/object/sign/…` URLs; the upload driver only ever stores `/object/public/…`. Signed URLs can therefore only originate OUTSIDE the app (Supabase dashboard "Get URL" — always signed and expiring — or hand-edited rows). A signed ref expires (~1h) and the image then404s.
+- **Root cause CONFIRMED live (2026-10-14) with the operator's project URL:**
+  - `GET /storage/v1/object/public/<bucket>/<path>` → `404 NoSuchBucket` for BOTH buckets and every name variant — Supabase's public route returns "Bucket not found" for PRIVATE buckets (anti-enumeration), so **both buckets are private** (default state; "intended public" was never toggled).
+  - The browser-requested ref for the profile object is a hand-minted **signed** URL (`/object/sign/…?token=…`, HS512, `scope:download`, iat = 27 min after the upload, exp = +1 year) and it serves **HTTP 200 image/jpeg, 244 KB** — proving the bucket and object exist and are healthy.
+  - Conclusion: the app (which only ever stores public refs)404s against private buckets; someone worked around it by pasting dashboard-signed URLs into the DB, which work only while their token lives (default ~1 h) and leak a bearer token into DB/API/frontend. No application code produces or requires signed URLs.
+- The remaining open question — whether the two buckets are actually PUBLIC (intended ≠ configured; an unauthenticated `public` read on a private bucket also returns 404) — is now verifiable with one command (see below).
+
+### Changed
+- `backend/src/storage.js` — new `normalizeStorageRef()`: any `/object/sign/|authenticated/…?token=…` ref is rewritten to the stable `/object/public/…` form with the token stripped (non-Supabase refs untouched). Applied in `resolveUploadRef()` and at the top of `removeUpload()` (signed refs now also delete correctly).
+- `frontend/src/utils/format.js` — `mediaUrl()` performs the same sign→public normalization, so even un-repaired rows render once buckets are public; expired tokens can never reach an `<img>` request.
+- `backend/src/db/normalizeStorageRefs.js` (`npm run migrate:storage-refs`) — dry-run by default; `NORMALIZE_STORAGE_REFS=1` applies. Shape-only rewrite of profiles/teachers/gallery/payments image columns; no keys, no tokens printed.
+- `backend/src/db/verifyStorageAccess.js` (`npm run storage:verify`) — credential-free public-read probe: takes explicit `<bucket>/<path>` args or scans DB refs, fetches each public URL with NO auth, prints status + Supabase error_code only (never tokens/keys); explains that 404-with-objects-present means the bucket is Private.
+- `backend/tests/supabaseStorageTest.js` — +7 assertions (43/43): sign→public normalization units (token stripped, public/non-Supabase refs untouched), backend choke-point normalization, signed-ref deletion via normalized shape (no token in the DELETE), API refs never signed/tokenized, and a DB-wide scan proving zero signed/tokenized refs across all four image columns.
+
+### Testing
+- `npm run supabase-test` 43/43 (exit 0); regression: upload 28/28, smoke 172/0, demo-e2e 54/0; `npm run migrate:storage-refs` dry-run exit 0; `npm run storage:verify` exit 0 (no Supabase refs locally); frontend `vite build` ✓.
+- **Live production verification COMPLETE (2026-10-14)** after the operator enabled “Public bucket” on both buckets: `GET /storage/v1/object/public/profile-images/members/1791927747243-7d1f9c7c554b.jpg` → **200 image/jpeg (244,868 B)** and `…/gallery-images/gallery/1791927791503-ff75269418a0.jpg` → **200 image/jpeg (1,055,093 B)**, both with valid JPEG magic — public reads confirmed against the live project, no credentials involved.
