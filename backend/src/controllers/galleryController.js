@@ -3,7 +3,7 @@ import path from 'node:path';
 import { listGallery, submitGalleryItem, moderateGalleryItem, deleteGalleryItem } from '../services/galleryService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';
-import { persistUpload } from '../storage.js';
+import { persistUpload, removeUpload, STORAGE_BUCKETS, GALLERY_IMAGE_MAX_BYTES } from '../storage.js';
 import { validate, parsePositiveId } from '../utils/validate.js';
 
 export const list = asyncHandler(async (req, res) => {
@@ -19,10 +19,19 @@ export const submit = [
       return;
     }
     assertImageMagic(fs.readFileSync(req.file.path));
-    const imageRef = await persistUpload(req.file); // local filename, or cloud URL when configured
+    // 3 MB cap (gallery-images bucket limit) + gallery/ prefix organization.
+    const imageRef = await persistUpload(req.file, {
+      bucket: STORAGE_BUCKETS.galleryImages, prefix: 'gallery', maxBytes: GALLERY_IMAGE_MAX_BYTES,
+    });
     const caption = (req.body.caption || '').toString().slice(0, 200);
-    const result = submitGalleryItem(req.user, imageRef, caption);
-    const data = await result;
+    let data;
+    try {
+      data = await submitGalleryItem(req.user, imageRef, caption);
+    } catch (err) {
+      // DB save failed after a successful upload — do not leave an orphan object.
+      await removeUpload(imageRef);
+      throw err;
+    }
     res.status(201).json({ success: true, message: 'Photo submitted for moderation', data });
   }),
 ];

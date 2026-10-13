@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { listTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher } from '../services/teacherService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';
-import { persistUpload } from '../storage.js';
+import { persistUpload, STORAGE_BUCKETS, PROFILE_IMAGE_MAX_BYTES } from '../storage.js';
 import { validate, parsePositiveId } from '../utils/validate.js';
 
 export const list = asyncHandler(async (_req, res) => {
@@ -31,7 +31,10 @@ export const create = [
     let photoFilename;
     if (req.file) {
       assertImageMagic(fs.readFileSync(req.file.path));
-      photoFilename = await persistUpload(req.file);
+      // Teachers share the profile-images bucket (1 MB) under teachers/.
+      photoFilename = await persistUpload(req.file, {
+        bucket: STORAGE_BUCKETS.profileImages, prefix: 'teachers', maxBytes: PROFILE_IMAGE_MAX_BYTES,
+      });
     }
     const result = await createTeacher(req.user, data, photoFilename);
     res.status(201).json({ success: true, message: 'Teacher added', data: result });
@@ -46,7 +49,9 @@ export const update = [
     let photoFilename;
     if (req.file) {
       assertImageMagic(fs.readFileSync(req.file.path));
-      photoFilename = await persistUpload(req.file);
+      photoFilename = await persistUpload(req.file, {
+        bucket: STORAGE_BUCKETS.profileImages, prefix: 'teachers', maxBytes: PROFILE_IMAGE_MAX_BYTES,
+      });
     }
     const result = await updateTeacher(id, data, photoFilename);
     res.json({ success: true, message: 'Teacher updated', data: result });

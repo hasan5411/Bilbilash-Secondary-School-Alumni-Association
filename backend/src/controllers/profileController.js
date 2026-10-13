@@ -1,9 +1,8 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { getOwnProfile, updateOwnProfile, validateBloodGroup } from '../services/profileService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';
-import { persistUpload } from '../storage.js';
+import { persistUpload, removeUpload, STORAGE_BUCKETS, PROFILE_IMAGE_MAX_BYTES } from '../storage.js';
 import { validate } from '../utils/validate.js';
 
 export const getProfile = asyncHandler(async (req, res) => {
@@ -41,11 +40,26 @@ export const updateProfile = [
       // Re-check content: reject renamed executables disguised as images.
       const buffer = fs.readFileSync(req.file.path);
       assertImageMagic(buffer);
-      photoFilename = await persistUpload(req.file); // local filename, or cloud URL when configured
-      // Best-effort cleanup of a previous avatar file is intentionally skipped (simplicity).
-      void path;
+      // 1 MB cap (profile-images bucket limit) + members/ prefix organization.
+      photoFilename = await persistUpload(req.file, {
+        bucket: STORAGE_BUCKETS.profileImages, prefix: 'members', maxBytes: PROFILE_IMAGE_MAX_BYTES,
+      });
     }
-    const profile = await updateOwnProfile(req.user.user_id, data, photoFilename);
+    // Capture the previous avatar so a REPLACED object can be cleaned up after
+    // a successful save (never before — a failed update must keep the old image).
+    const before = photoFilename ? await getOwnProfile(req.user.user_id) : null;
+    let profile;
+    try {
+      profile = await updateOwnProfile(req.user.user_id, data, photoFilename);
+    } catch (err) {
+      // DB save failed after a successful upload — do not leave an orphan object.
+      if (photoFilename) await removeUpload(photoFilename);
+      throw err;
+    }
+    // Best-effort: the replaced avatar is no longer referenced by anything.
+    if (photoFilename && before?.profile_photo && before.profile_photo !== photoFilename) {
+      await removeUpload(before.profile_photo);
+    }
     res.json({ success: true, message: 'Profile updated', data: { profile } });
   }),
 ];

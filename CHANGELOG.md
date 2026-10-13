@@ -86,3 +86,31 @@ Executed and passing:
 - `npm run authority-init-test` → **63 passed, 0 failed** (exit 0) vs local embedded PostgreSQL 17.
 - Regression, all exit 0: smoke **172/0**, contribution **117/0**, profile **74/0**, demo-e2e **54/0**, upload **28/0**.
 - Production `/api/health` read-only live check: `status ok, database connected, db_ok true` (HTTP 200). Production Authority login itself is verified only after the operator runs the documented one-time init step (see `AUTHORITY_INIT_FIX_REPORT.md`).
+
+---
+
+## Supabase Storage Integration + Profile-Avatar Fix — 2026-10-14
+
+### Root cause of the avatar bug (confirmed in code)
+- `frontend/src/utils/format.js` `mediaUrl()` mapped a stored bare filename to an ORIGIN-RELATIVE `/uploads/…` URL. In the deployed split stack (frontend on Vercel, backend on Render) the browser requested that path from the VERCEL origin, where it does not exist — the `<img>` failed while the initials-fallback branch (`photo ? <img> : initials`) had already hidden the initials. Exactly the reported symptom. Secondary factor: Render's ephemeral disk wipes `uploads/` on every redeploy, so persistent object storage is required regardless.
+
+### Added
+- **Supabase Storage driver** (`backend/src/storage.js`): server-side upload via the Storage REST API using the SERVER-ONLY `SUPABASE_SERVICE_ROLE_KEY` (never exposed to the browser). Two existing buckets with automatic path organization and enforced limits: `profile-images` (`members/`, `teachers/`, 1 MB) and `gallery-images` (`gallery/`, 3 MB). DB stores the object's public URL; upstream failures surface as 502 (never silent success); oversize is rejected 422 before any upload; `removeUpload()` destroys objects by parsing the public URL (404 tolerated).
+- `backend/src/db/migrateUploadsToSupabase.js` (`npm run migrate:uploads`) — dry-run by default, `MIGRATE_UPLOADS=1` to apply; migrates legacy local filename refs (profiles/teachers/gallery) to the buckets; skips missing local files with a report; payments out of scope.
+- `backend/tests/supabaseStorageTest.js` (`npm run supabase-test`) — 36 assertions: driver against a local stub Storage server (bucket/prefix/auth/bytes/public-URL/delete/limits/failure paths) plus a spawned backend API matrix (avatar/teacher/gallery upload → persistence → moderation → delete removes the object; 401/403; oversize; magic bytes).
+- `frontend/src/components/Avatar.jsx` — shared avatar: initials stay visible until the image actually loads, `onError` restores initials permanently (no broken-image icon); used on Profile, Directory, PublicProfile and admin Members.
+
+### Changed
+- `backend/src/config/env.js` — storage driver selection: explicit `UPLOAD_STORAGE` → cloudinary (if `CLOUDINARY_URL`) → supabase (if `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) → local.
+- `backend/src/controllers/{profile,gallery,teacher}Controller.js` — uploads now carry bucket/prefix/size-limit options; a replaced avatar's old object is removed after a successful save; DB-save failures after a successful upload roll the object back (no orphans).
+- `frontend/src/utils/format.js` — `mediaUrl()` prefixes relative refs with `VITE_API_BASE` (same convention as `api/client.js`), fixing avatar/screenshot/gallery rendering in the split deployment.
+- `frontend/src/pages/{Profile,Directory,PublicProfile,Gallery}.jsx`, `admin/Members.jsx`, `components/TeacherPhoto.jsx` — Avatar/GalleryImage fallbacks; profile hint now says max 1 MB.
+- `backend/.env.example`, `GUIDE.md` (Section G, stack table, status), `backend/package.json` (scripts).
+
+### Database changes
+- None. Same tables/fields (`profiles.profile_photo`, `teachers.photo`, `gallery.image_path`) now hold either a legacy local filename or an absolute Supabase public URL — both render correctly.
+
+### Testing
+- `npm run supabase-test` → **36/36** (exit 0); `npm run upload-test` → **28/28**; regression: smoke **172/0**, contribution **117/0**, profile **74/0**, demo-e2e **54/0**, authority-init **63/0**; frontend `vite build` ✓.
+- Browser (Vite dev + local backend, real UI): member login → Profile shows photo loaded cross-origin via `VITE_API_BASE`; canvas-generated PNG uploaded through the actual file input → "Profile updated" → image renders; full reload → still renders; dead URL injected → initials fallback (no broken icon); console clean.
+- Not verified here: a REAL Supabase project round-trip (needs your `SUPABASE_URL`/service key on Render — stub-verified protocol, identical REST shape).

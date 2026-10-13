@@ -15,7 +15,9 @@
     "seed-demo": "node tests/seedDemo.js",
     "demo-e2e": "node tests/demoE2E.js",
     "upload-test": "node tests/uploadStorageTest.js",
-    "authority-init-test": "node tests/authorityInitTest.js"
+    "authority-init-test": "node tests/authorityInitTest.js",
+    "migrate:uploads": "node src/db/migrateUploadsToSupabase.js",
+    "supabase-test": "node tests/supabaseStorageTest.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -4,6 +4,19 @@ import { api } from '../api/client.js';
 import { Card, Button, Spinner, Alert, EmptyState, PageHeader, Badge, Input } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 
+/** Gallery photo with a graceful fallback — a dead link never shows a broken image. */
+function GalleryImage({ src, alt }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div role="img" aria-label={alt} className="flex h-full w-full items-center justify-center px-4 text-center text-sm text-ink-soft">
+        Image unavailable
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} onError={() => setFailed(true)} className="h-full w-full object-contain" />;
+}
+
 export default function Gallery() {
   const { isMember, isAdmin } = useAuth();
   const [items, setItems] = useState(null);
@@ -87,7 +100,7 @@ export default function Gallery() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="w-full shrink-0 sm:w-[70%]">
                 <div className="aspect-[4/3] w-full overflow-hidden rounded-lg bg-mist">
-                  <img src={mediaUrl(g.image_path)} alt={g.caption || 'Gallery photo'} className="h-full w-full object-contain" />
+                  <GalleryImage src={mediaUrl(g.image_path)} alt={g.caption || 'Gallery photo'} />
                 </div>
               </div>
               <div className="flex w-full min-w-0 flex-col sm:w-[30%]">

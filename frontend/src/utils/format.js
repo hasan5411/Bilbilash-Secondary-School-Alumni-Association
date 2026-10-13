@@ -34,12 +34,20 @@ export function formatPercent(value) {
   return `${Math.round(n * 10) / 10}%`;
 }
 
+// Backend origin for split deployments (frontend on Vercel, API on Render).
+// Same convention as api/client.js: empty = same-origin (dev proxy / single-service).
+const API_BASE = import.meta.env.VITE_API_BASE || '';
+
 /**
  * Stored upload reference -> URL the <img> can load.
- * Local driver stores a bare filename (served by the backend at /uploads/…);
- * the cloud storage driver stores an absolute https URL (already complete).
+ * Cloud drivers (supabase/cloudinary) store an absolute https URL (complete,
+ * cross-origin-safe). The local driver stores a bare filename served by the
+ * backend at /uploads/… — that path MUST be prefixed with the backend origin,
+ * or the browser requests it from the frontend host (Vercel) where it does
+ * not exist. This was the profile-avatar bug: initials vanished on upload
+ * while the image silently 404'd on the wrong origin.
  */
 export function mediaUrl(ref) {
   if (!ref) return null;
-  return /^https?:\/\//i.test(ref) ? ref : `/uploads/${ref}`;
+  return /^https?:\/\//i.test(ref) ? ref : `${API_BASE}/uploads/${ref}`;
 }

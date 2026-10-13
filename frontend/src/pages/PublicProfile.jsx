@@ -1,4 +1,4 @@
-import { mediaUrl } from '../utils/format.js';
+import Avatar from '../components/Avatar.jsx';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client.js';
@@ -28,9 +28,7 @@ export default function PublicProfile() {
     <div className="mx-auto max-w-2xl">
       <Card>
         <div className="flex items-center gap-4">
-          {profile.profile_photo
-            ? <img src={mediaUrl(profile.profile_photo)} alt="" className="h-20 w-20 rounded-full object-cover" />
-            : <div className="flex h-20 w-20 items-center justify-center rounded-full bg-forest/10 text-2xl font-black text-moss">{profile.first_name?.[0]}{profile.last_name?.[0]}</div>}
+          <Avatar name={`${profile.first_name || ''} ${profile.last_name || ''}`} photoRef={profile.profile_photo} className="h-20 w-20" textClass="text-2xl font-black" />
           <div>
             <h1 className="text-2xl font-bold text-ink">{profile.first_name} {profile.last_name}</h1>
             <p className="text-sm text-ink-soft">Member since {new Date(profile.created_at).toLocaleDateString()}</p>

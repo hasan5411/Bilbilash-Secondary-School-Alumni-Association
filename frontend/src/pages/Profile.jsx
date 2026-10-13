@@ -1,4 +1,4 @@
-import { mediaUrl } from '../utils/format.js';
+import Avatar from '../components/Avatar.jsx';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
 import { Card, Input, Select, Textarea, Button, Spinner, Alert, PageHeader, BLOOD_GROUPS } from '../components/ui.jsx';
@@ -274,9 +274,7 @@ export default function Profile() {
       <Card className="mt-3">
         <CompletionIndicator percent={profile.profile_completion} />
         <div className="mb-4 flex items-center gap-4">
-          {profile.profile_photo
-            ? <img src={mediaUrl(profile.profile_photo)} alt="" className="h-16 w-16 rounded-full object-cover" />
-            : <div className="flex h-16 w-16 items-center justify-center rounded-full bg-forest/10 text-xl font-black text-moss">{profile.first_name[0]}{profile.last_name[0]}</div>}
+          <Avatar name={`${profile.first_name} ${profile.last_name}`} photoRef={profile.profile_photo} className="h-16 w-16" textClass="text-xl font-black" />
           <div>
             <div className="font-bold text-ink">{profile.first_name} {profile.last_name}</div>
             <div className="text-sm text-ink-soft">{profile.email}</div>
@@ -321,7 +319,7 @@ export default function Profile() {
             <p className="mt-1 text-xs text-ink-soft">Shown on your public profile. Leave empty to hide the Facebook button.</p>
           </div>
           <div className="sm:col-span-2">
-            <span className="mb-1 block text-sm font-medium text-ink">Profile photo (JPG/PNG/WEBP/GIF, max 3 MB)</span>
+            <span className="mb-1 block text-sm font-medium text-ink">Profile photo (JPG/PNG/WEBP/GIF, max 1 MB)</span>
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(e) => setFile(e.target.files[0])}
               className="rounded-lg border border-line px-3 py-2 text-sm" />
           </div>

@@ -68,12 +68,24 @@ export const env = {
     database: process.env.DB_NAME || 'bilbilash_alumni',
   },
   // Upload storage driver. Local disk is EPHEMERAL on Render — production
-  // must use persistent object storage. 'cloudinary' requires CLOUDINARY_URL.
+  // must use persistent object storage. Selection order:
+  //   1. explicit UPLOAD_STORAGE=local|cloudinary|supabase
+  //   2. 'cloudinary' when CLOUDINARY_URL is set
+  //   3. 'supabase' when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set
+  //   4. 'local' (development default)
+  // SUPABASE_SERVICE_ROLE_KEY is a SERVER-ONLY secret: never sent to the
+  // browser, never committed, never included in any VITE_ variable.
   storage: {
-    driver: process.env.UPLOAD_STORAGE || (process.env.CLOUDINARY_URL ? 'cloudinary' : 'local'),
+    driver: process.env.UPLOAD_STORAGE
+      || (process.env.CLOUDINARY_URL ? 'cloudinary'
+        : (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY ? 'supabase' : 'local')),
     cloudinaryUrl: process.env.CLOUDINARY_URL || '',
     // Test-only override of the API host (never set in production).
     cloudinaryBase: process.env.CLOUDINARY_BASE_URL || null,
+    supabaseUrl: (process.env.SUPABASE_URL || '').replace(/\/+$/, ''),
+    supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    // Test-only override of the Storage REST host (never set in production).
+    supabaseBase: process.env.SUPABASE_STORAGE_BASE || null,
   },
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',

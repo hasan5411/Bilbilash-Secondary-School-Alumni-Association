@@ -20,7 +20,7 @@ verification, notification system এবং audit trail নিয়ে এক�
 | Frontend | React 19 + Vite 7 + Tailwind CSS 4, react-router-dom 7 (BrowserRouter) |
 | Backend | Node.js + Express 5 (ESM), JWT (Bearer token), bcrypt |
 | Database | **PostgreSQL (Supabase-optimized)** — driver: `pg` (mysql2 থেকে মাইগ্রেট করা হয়েছে) |
-| Uploads | Backend `uploads/` ফোল্ডারে local filesystem (production-এ persistent storage দরকার, দেখুন Section G) |
+| Uploads | **Supabase Storage** — `profile-images` ও `gallery-images` bucket, সব upload backend-এর মধ্য দিয়ে (server-only service key); local disk শুধু ডেভেলপমেন্ট (দেখুন Section G) |
 | Email | Gmail SMTP (password-reset OTP), ঐচ্ছিক |
 
 **Architecture:**
@@ -359,19 +359,34 @@ git push
 - **Render → Supabase:** `DATABASE_URL` (Pooler URI, port 6543, `sslmode=require`)।
   প্রতি deploy-এ connection pool নতুন করে খোলে — pooler ব্যবহারে সমস্যা হয় না।
 - **HTTPS:** Vercel ও Render দুটোই স্বয়ংক্রিয় HTTPS দেয়; Supabase connection TLS (sslmode=require)।
-- **File storage (এখন storage abstraction আছে — `backend/src/storage.js`):**
+- **File storage — Supabase Storage (`backend/src/storage.js` driver 'supabase'):**
   - **সতর্কতা: Render-এর local disk EPHEMERAL** — প্রতিটি deploy/restart-এ `uploads/`
-    মুছে যায়, তাই driver 'local' থাকলে production-এ ছবি স্থায়ী থাকবে না।
-  - Driver নির্বাচন env থেকে: `UPLOAD_STORAGE=local` (ডিফল্ট) বা `cloudinary`
-    (`CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name` সহ; SDK ছাড়াই signed REST)।
-  - DB-তে একই আকারের reference থাকে: নাম (local) বা সম্পূর্ণ https URL (cloud);
-    ফ্রন্টএন্ড `utils.mediaUrl()` দিয়ে দুটোই ঠিকমতো render করে।
-  - যাচাই হয়েছে (`npm run upload-test`, ২৮/২৮ ✅): upload → retrieval → magic-byte
-    validation → ৩ MB limit → 401/403 permission → moderation delete → file removal;
-    cloudinary driver স্বাক্ষর/মাল্টিপার্ট/destroy protocol একটি local stub server-এ যাচাইকৃত
-    (signature = sha1(sorted-params + secret), failure → 502, silent success নয়)।
-  - **বাস্তব Cloudinary account-এ এখনো যাচাই হয়নি** — আপনার `CLOUDINARY_URL` পাওয়ার পর
-    Render staging-এ একটি আসল ছবি upload/retrieve করে যাচাই করতে হবে (Section K-তে blocked)।
+    মুছে যায়, তাই production-এ ছবি Supabase Storage-এ যায় (স্থায়ী)।
+  - **রেন্ডার ফ্লো:** ছবি ব্রাউজার থেকে সরাসরি storage-এ যায় না — Express backend-ই
+    multer দিয়ে ফাইল নেয়, magic-byte + MIME + extension যাচাই করে, তারপর server-only
+    `SUPABASE_SERVICE_ROLE_KEY` দিয়ে Storage REST API-তে পাঠায়। ফ্রন্টএন্ড শুধু পাবলিক
+    URL দেখে — key কখনোই browser-এ যায় না।
+  - **বাকেট ও সীমা (bucket settings-এর সাথে মিলিয়ে রাখুন):** `profile-images` (member + teacher
+    photo; `members/` ও `teachers/` prefix; **১ MB**), `gallery-images` (alumni gallery;
+    `gallery/` prefix; **৩ MB**)। দুই bucket-ই **Public** রাখুন (পাবলিক দেখার জন্য) — upload/delete
+    তবুও শুধু service key দিয়ে backend থেকেই হয়, তাই public bucket কিছু খোলে না।
+  - **Env (শুধু Render backend-এ, কখনোই Vercel-এ নয়):** `SUPABASE_URL`,
+    `SUPABASE_SERVICE_ROLE_KEY`; সেট করলেই driver automatically 'supabase' হয়ে যায়
+    (বা স্পষ্ট করতে `UPLOAD_STORAGE=supabase`)।
+  - DB-তে সম্পূর্ণ পাবলিক https URL থাকে; পুরনো local ফাইলের নাম থাকলে ফ্রন্টএন্ড
+    `mediaUrl()` এটিকে backend origin (VITE_API_BASE) সহ ঠিকমতো render করে —
+    **এটাই আগের avatar bug-এর মূল কারণ** (relative `/uploads/…` URL Vercel-এ 404 হতো)।
+  - **পুরনো local ছবি মাইগ্রেট:** `npm run migrate:uploads` (ডিফল্ট dry-run;
+    `MIGRATE_UPLOADS=1` দিলেই apply) — শুধু নিজের local ফাইল থাকলে ওগুলো bucket-এ নিয়ে
+    DB ref আপডেট করে; Render-এর ephemeral disk-এ ফাইল আগেই থাকে না, তাই production-এ এটি
+    প্রায় no-op (প্রয়োজনে সেই ছবি আবার upload করতে হবে)।
+  - **যাচাই হয়েছে:** `npm run supabase-test` **৩৬/৩৬** ✅ (stub Storage REST server + আলাদা
+    backend instance দিয়ে বাস্তব API matrix: avatar/teacher/gallery upload → সঠিক bucket/prefix →
+    persist → moderation → delete-এ bucket object মুছে যায়; ১ MB/৩ MB limit; 401/403) এবং
+    `npm run upload-test` **২৮/২৮** ✅ (local + cloudinary driver অক্ষত)। ব্রাউজারেও যাচাই:
+    upload → ছবি দেখা যায় → reload-এও থাকে → ভাঙা URL-এ initials fallback।
+  - Cloudinary driver বিকল্প হিসেবে রয়ে গেছে (`CLOUDINARY_URL` + `UPLOAD_STORAGE=cloudinary`);
+    বর্তমান production পথ Supabase।
 - **Email OTP:** Gmail App Password দিয়ে `EMAIL_USER/EMAIL_APP_PASSWORD/EMAIL_FROM` সেট করলে
   password-reset OTP ইমেইলে যাবে। OTP value বা credential কখনো log হয় না (verified)।
 - **Roles/permissions:** AUTHORITY > ADMIN > MEMBER > VISITOR — প্রতিটি protected API-তে
@@ -460,8 +475,9 @@ Production deploy-এর পর প্রতিটি ধাপে হাতে-
 - Browser যাচাই: member login → notifications (Bangla text সহ) → contribution ledger;
   authority login → admin stats → payment review — console নিষ্কলঙ্ষ
 - Frontend production build + SPA rewrite (`vercel.json`)
-- Upload storage abstraction (`backend/src/storage.js`): local + Cloudinary driver
-  (signed REST), `upload-test` ২৮/২৮, frontend `mediaUrl()` (১২টি call site)
+- Upload storage: Supabase Storage driver (`backend/src/storage.js`) — `profile-images`
+  (১ MB, members/+teachers/) ও `gallery-images` (৩ MB, gallery/); `supabase-test` ৩৬/৩৬ +
+  `upload-test` ২৮/২৮; avatar bug ফিক্স (mediaUrl + VITE_API_BASE) ব্রাউজারে যাচাই সহ
 - Test-safety guard: non-local DB host-এ সব suite নিজে থেকেই বন্ধ (ALLOW_REMOTE_TESTS=1 ছাড়া)
 - `git init` + প্রথম commit + secret scan (কোনো secret/backup/upload track হয়নি)
 - `.env.example` templates (placeholders only), `.gitignore` hardened
@@ -482,13 +498,13 @@ Production deploy-এর পর প্রতিটি ধাপে হাতে-
 3. Render account + Supabase/Vercel URL গুলো dashboard-এ বসানো
 4. Vercel account + `VITE_API_BASE`
 5. (ঐচ্ছিক) Gmail App Password, bKash/Nagad/Rocket number
-6. **Cloudinary credentials** — driver লেখা ও stub-পরীক্ষিত, কিন্তু আসল
-   `CLOUDINARY_URL` দিয়ে staging-এ একটি বাস্তব upload যাচাই আপনার credentials ছাড়া সম্ভব নয়
+6. **Supabase Storage হাতে-কলমে যাচাই** — আপনার দুই bucket (`profile-images`, `gallery-images`)
+   Public করা আছে কিনা এবং Render-এ `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` সেট করার পর একটি আসল ছবি upload → display → delete যাচাই করতে হবে (সব স্থানীয়/stub-স্তরে verified)
 
 **⚠️ Known limitations:**
 
-- Default `UPLOAD_STORAGE=local` হলে uploads ephemeral disk-এই থাকে — production-ে
-  `UPLOAD_STORAGE=cloudinary` + `CLOUDINARY_URL` সেট করতে হবে (Section G)
+- Default `UPLOAD_STORAGE=local` হলে uploads ephemeral disk-এই থাকে — production-এ
+  `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` সেট করলেই (Section G) ছবি Supabase Storage-এ স্থায়ী হয়; payment screenshot এখনো local disk-ে যায় (bucket ছাড়া)
 - Localhost MySQL-এর পুরনো test data migrate করা হয়নি (আপনার নির্দেশ অনুযায়ী অপচয়যোগ্য)
 - `seed-demo`/`demo-e2e` শুধু local/staging-এর জন্য — production-এ চালাবেন না
 - Frontend bundle ৬৪৩ kB (chunk-size warning) — চাইলে route-based code-splitting করা যায়
