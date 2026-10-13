@@ -33,3 +33,13 @@ export function formatPercent(value) {
   if (!Number.isFinite(n)) return '0%';
   return `${Math.round(n * 10) / 10}%`;
 }
+
+/**
+ * Stored upload reference -> URL the <img> can load.
+ * Local driver stores a bare filename (served by the backend at /uploads/…);
+ * the cloud storage driver stores an absolute https URL (already complete).
+ */
+export function mediaUrl(ref) {
+  if (!ref) return null;
+  return /^https?:\/\//i.test(ref) ? ref : `/uploads/${ref}`;
+}

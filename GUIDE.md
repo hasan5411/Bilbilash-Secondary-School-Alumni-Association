@@ -42,8 +42,7 @@ graph LR
 │   ├── uploads/            ← uploaded images (git-ignored)
 │   └── .env.example        ← environment template
 ├── frontend/               ← React SPA (Vercel-এ deploy হবে)
-│   ├── src/  vercel.json  vite.config.js
-│   └── .env.example নেই — শুধু VITE_API_BASE লাগবে (নিচে দেখুন)
+│   ├── src/  vercel.json  vite.config.js  .env.example (শুধু VITE_API_BASE)
 ├── database/
 │   ├── schema.postgresql.sql   ← বর্তমান সক্রিয় schema (PostgreSQL/Supabase)
 │   └── schema.sql              ← পুরনো MySQL schema (reference হিসেবে রাখা)
@@ -109,12 +108,32 @@ cd backend
 npm run smoke-test        # ১৭২/১৭২  ✅ — auth, roles, moderation, notifications, delete rules
 npm run contribution-test # ১১৭/১১৭  ✅ — contribution rates, dues, payments, reconciliation
 npm run profile-test      # ৭৪/৭৪    ✅ — profile completion %, photo, permissions
+npm run upload-test       # ২৮/২৮    ✅ — upload storage, validation, permissions (নিচে Section G)
 npm run seed-demo         # ১০০ জন demo member (idempotent) ✅
-npm run demo-e2e          # ৫৬/৫৬    ✅ — পুরো community workflow end-to-end
+npm run demo-e2e          # ✅ — পুরো community workflow end-to-end (check সংখ্যা আগের demo data অনুযায়ী ৫৪–৫৬, failed সবসময় ০)
 ```
 
 সব test suite `SMOKE_BASE` (default `http://localhost:5000`) এবং `DATABASE_URL/.env`
 ব্যবহার করে — তাই চালানোর আগে backend server চালু থাকতে হবে।
+
+### B5. Test safety policy (গুরুত্বপূর্ণ)
+
+এই test suite-গুলো **row তৈরি ও মুছে ফেলে** (fixture cleanup) — তাই শুধু LOCAL বা
+DISPOSABLE STAGING database-এ চলবে। **Production database-এ কখনো নয়।**
+এটি শুধু কথায় নয়, code-এ enforced: `tests/pgTestClient.js` যেকোনো non-local
+database host-এ suite চালাতে দেয় না (explicit `ALLOW_REMOTE_TESTS=1` ছাড়া)।
+
+| Suite | যা মিউটেট করে | Cleanup | Local | Staging | Production |
+|---|---|---|---|---|---|
+| smoke-test | `smoke.%@example.com` users, `SMOKE-` prefix content, promote/demote/delete | নিজ fixture নিজেই মুছে (FK-safe order) | ✅ | ✅ | **না** |
+| contribution-test | `contrib.%@example.com` users + সরাসরি DB-তে rates/payments INSERT | নিজ fixture মুছে | ✅ | ✅ | **না** |
+| profile-test | ১টি `fix.*` fixture user + photo file | fixture + notifications মুছে | ✅ | ✅ | **না** |
+| upload-test | demo.m001-এর একটি profile photo + ১টি gallery item | gallery item+file মুছে | ✅ | ✅ | **না** |
+| seed-demo | **১০০ জন** `demo.*@bilbilash.demo` member তৈরি+approve | `--cleanup` শুধু demo রেকর্ড মুছে | ✅ | ✅ | **না** |
+| demo-e2e | seed-demo cohort লাগে; payments/notices/polls/events তৈরি করে | নিজ throwaway রেকর্ড মুছে | ✅ | ✅ | **না** |
+
+সারসংক্ষেপ: **কোনো test suite production database-এ চালানো যায় না** (guard থেকেও যাবে না)।
+demo data পরিষ্কার করতে: `node tests/seedDemo.js --cleanup` (শুধু demo রেকর্ড)।
 
 ---
 
@@ -149,18 +168,26 @@ npm run demo-e2e          # ৫৬/৫৬    ✅ — পুরো community work
    - **Pooler URI (port 6543)** — Render থেকে এটিই ব্যবহার করুন (transaction mode, বেশি connection ধারণ করে)।
    - **Direct URI (port 5432)** — শুধু একটানা দীর্ঘ migration/one-off কাজে। Render-এর মতো pooled
      প্রোডাকশন app-এর জন্য **Direct URI ব্যবহার করবেন না** — connection limit কম, দ্রুত শেষ হয়ে যায়।
-4. আপনার local machine-এ `backend/.env`-এ temporarily বসান:
+4. **STAGING আর PRODUCTION আলাদা রাখুন (non-negotiable):** verification-এর জন্য Supabase-এর
+   একটি আলাদা **disposable staging project** (যেমন `bilbilash-staging`) বানান — test suite
+   শুধু staging-এই চলবে। Production database কখনোই test target নয় (code-এ guard সেটি বাধা দেয়);
+   production DB-তে শুধু deployed অ্যাপই লিখবে। আলাদা আলাদা connection string রাখুন:
+   স্থানীয় `backend/.env`-এ staging URI, production URI শুধু Render-এর Environment-এ।
+
+5. আপনার local machine-এ `backend/.env`-এ **staging** URI বসান:
    `DATABASE_URL=postgresql://postgres.YOUR_PROJECT:[PASSWORD]@aws-0-….pooler.supabase.com:6543/postgres?sslmode=require`
 
-### C3. Schema apply + যাচাই (production-এ ছোড়ার আগে অবশ্যই)
+### C3. Schema apply + যাচাই (STAGING database-এ; production-এ কখনো নয়)
 
 ```bash
 cd backend
-npm run init-db      # নতুন Supabase database-এ ২১ টেবিল + roles + Authority account বসবে
+npm run init-db      # নতুন STAGING database-এ ২১ টেবিল + roles + Authority account বসবে
 ```
 
-তারপর সব test suite একই `DATABASE_URL` দিয়ে চালান (Section B4) — অর্থাৎ Supabase database-এ
-ই আগে পুরো verification হবে, তারপরেই Render-এ deploy।
+তারপর সব test suite একই `DATABASE_URL` (staging) দিয়ে চালান — non-local host হওয়ায়
+suite-গুলো `ALLOW_REMOTE_TESTS=1` দিয়ে চালাতে হবে (গার্ড ইচ্ছাকৃতভাবেই জিজ্ঞেস করে)।
+সব suite সবুজ হওয়ার পরেই সেই staging verification হিসেবে গণ্য; **production database
+কখনোই test target হবে না** — production-এ শুধু Render-এর deployed app লিখবে।
 
 ### C4. Backup ও Restore
 
@@ -231,7 +258,7 @@ git push
 | Runtime | Node |
 | Build Command | `npm install` |
 | Start Command | `npm start` (অর্থাৎ `node src/server.js`) |
-| Health Check Path | `/api/health` |
+| Health Check Path | `/api/health` (এই endpoint স্থানীয় backend-এ verified; Render-এ live যাচাই হবে প্রথম deploy-এর পর — এখনো কোনো deployed URL নেই) |
 
 3. **Environment Variables** (Dashboard → Environment) — শুধু এখানে, কোডে নয়:
 
@@ -249,8 +276,10 @@ git push
 `ALLOW_DEV_OTP` **কখনোই** production-এ সেট করবেন না। `PORT` Render নিজে সেট করে — অ্যাপ
 `process.env.PORT` পড়ে, তাই আলাদা কিছু করতে হবে না (verified: `env.port`)।
 
-4. Deploy শেষে: `https://আপনার-service.onrender.com/api/health` দেখাবে
-   `{"data":{"status":"ok","database":"connected"}}` — এটাই backend + Supabase connectivity-র প্রমাণ।
+4. Deploy শেষে (এখনো করা হয়নি — আপনার approval ও account লাগবে):
+   `https://আপনার-service.onrender.com/api/health` দেখাবে
+   `{"data":{"status":"ok","database":"connected"}}` — তখনই বলা যাবে backend +
+   Supabase connectivity live কাজ করছে। এই গাইডে কোনো deployed URL-এর দাবি নেই।
 
 > মনে রাখবেন: Render free tier-এ dyno কিছুক্ষণ পর sleep করে; প্রথম request-এ ৩০-৫০ সেকেন্ড
 > দেরি হতে পারে। Database query pool `connectionLimit: 10` — pooler URI ব্যবহার করলে
@@ -297,10 +326,19 @@ git push
 - **Render → Supabase:** `DATABASE_URL` (Pooler URI, port 6543, `sslmode=require`)।
   প্রতি deploy-এ connection pool নতুন করে খোলে — pooler ব্যবহারে সমস্যা হয় না।
 - **HTTPS:** Vercel ও Render দুটোই স্বয়ংক্রিয় HTTPS দেয়; Supabase connection TLS (sslmode=require)।
-- **Persistent file storage (গুরুত্বপূর্ণ সীমাবদ্ধতা):** বর্তমানে gallery/profile/screenshot ছবি
-  Render-এর ephemeral disk `uploads/`-এ যায় — **মানে deploy করলেই আগের ছবিগুলো মুছে যাবে**।
-  Production-এ persistent object storage (যেমন Cloudinary/S3-compatible storage) লাগবে;
-  credentials শুধু backend environment-এ থাকবে। এটি এখনো integrated হয়নি — Section K-তে তালিকাভুক্ত।
+- **File storage (এখন storage abstraction আছে — `backend/src/storage.js`):**
+  - **সতর্কতা: Render-এর local disk EPHEMERAL** — প্রতিটি deploy/restart-এ `uploads/`
+    মুছে যায়, তাই driver 'local' থাকলে production-এ ছবি স্থায়ী থাকবে না।
+  - Driver নির্বাচন env থেকে: `UPLOAD_STORAGE=local` (ডিফল্ট) বা `cloudinary`
+    (`CLOUDINARY_URL=cloudinary://api_key:api_secret@cloud_name` সহ; SDK ছাড়াই signed REST)।
+  - DB-তে একই আকারের reference থাকে: নাম (local) বা সম্পূর্ণ https URL (cloud);
+    ফ্রন্টএন্ড `utils.mediaUrl()` দিয়ে দুটোই ঠিকমতো render করে।
+  - যাচাই হয়েছে (`npm run upload-test`, ২৮/২৮ ✅): upload → retrieval → magic-byte
+    validation → ৩ MB limit → 401/403 permission → moderation delete → file removal;
+    cloudinary driver স্বাক্ষর/মাল্টিপার্ট/destroy protocol একটি local stub server-এ যাচাইকৃত
+    (signature = sha1(sorted-params + secret), failure → 502, silent success নয়)।
+  - **বাস্তব Cloudinary account-এ এখনো যাচাই হয়নি** — আপনার `CLOUDINARY_URL` পাওয়ার পর
+    Render staging-এ একটি আসল ছবি upload/retrieve করে যাচাই করতে হবে (Section K-তে blocked)।
 - **Email OTP:** Gmail App Password দিয়ে `EMAIL_USER/EMAIL_APP_PASSWORD/EMAIL_FROM` সেট করলে
   password-reset OTP ইমেইলে যাবে। OTP value বা credential কখনো log হয় না (verified)।
 - **Roles/permissions:** AUTHORITY > ADMIN > MEMBER > VISITOR — প্রতিটি protected API-তে
@@ -388,6 +426,9 @@ Production deploy-এর পর প্রতিটি ধাপে হাতে-
 - Browser যাচাই: member login → notifications (Bangla text সহ) → contribution ledger;
   authority login → admin stats → payment review — console নিষ্কলঙ্ষ
 - Frontend production build + SPA rewrite (`vercel.json`)
+- Upload storage abstraction (`backend/src/storage.js`): local + Cloudinary driver
+  (signed REST), `upload-test` ২৮/২৮, frontend `mediaUrl()` (১২টি call site)
+- Test-safety guard: non-local DB host-এ সব suite নিজে থেকেই বন্ধ (ALLOW_REMOTE_TESTS=1 ছাড়া)
 - `git init` + প্রথম commit + secret scan (কোনো secret/backup/upload track হয়নি)
 - `.env.example` templates (placeholders only), `.gitignore` hardened
 - পুরনো MySQL code `legacy-mysql/`-এ সংরক্ষিত; `database/schema.sql` অক্ষত
@@ -407,12 +448,13 @@ Production deploy-এর পর প্রতিটি ধাপে হাতে-
 3. Render account + Supabase/Vercel URL গুলো dashboard-এ বসানো
 4. Vercel account + `VITE_API_BASE`
 5. (ঐচ্ছিক) Gmail App Password, bKash/Nagad/Rocket number
-6. **Persistent file storage** integrate করা হয়নি (Section G) — ছবি স্থায়ী রাখতে হলে
-   Cloudinary/S3-এর মতো object storage যুক্ত করতে হবে
+6. **Cloudinary credentials** — driver লেখা ও stub-পরীক্ষিত, কিন্তু আসল
+   `CLOUDINARY_URL` দিয়ে staging-এ একটি বাস্তব upload যাচাই আপনার credentials ছাড়া সম্ভব নয়
 
 **⚠️ Known limitations:**
 
-- Uploads ephemeral disk-এ (উপরে দেওয়া আছে)
+- Default `UPLOAD_STORAGE=local` হলে uploads ephemeral disk-এই থাকে — production-ে
+  `UPLOAD_STORAGE=cloudinary` + `CLOUDINARY_URL` সেট করতে হবে (Section G)
 - Localhost MySQL-এর পুরনো test data migrate করা হয়নি (আপনার নির্দেশ অনুযায়ী অপচয়যোগ্য)
 - `seed-demo`/`demo-e2e` শুধু local/staging-এর জন্য — production-এ চালাবেন না
 - Frontend bundle ৬৪৩ kB (chunk-size warning) — চাইলে route-based code-splitting করা যায়

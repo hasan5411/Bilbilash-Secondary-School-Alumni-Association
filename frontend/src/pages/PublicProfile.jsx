@@ -1,3 +1,4 @@
+import { mediaUrl } from '../utils/format.js';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api } from '../api/client.js';
@@ -28,7 +29,7 @@ export default function PublicProfile() {
       <Card>
         <div className="flex items-center gap-4">
           {profile.profile_photo
-            ? <img src={`/uploads/${profile.profile_photo}`} alt="" className="h-20 w-20 rounded-full object-cover" />
+            ? <img src={mediaUrl(profile.profile_photo)} alt="" className="h-20 w-20 rounded-full object-cover" />
             : <div className="flex h-20 w-20 items-center justify-center rounded-full bg-forest/10 text-2xl font-black text-moss">{profile.first_name?.[0]}{profile.last_name?.[0]}</div>}
           <div>
             <h1 className="text-2xl font-bold text-ink">{profile.first_name} {profile.last_name}</h1>

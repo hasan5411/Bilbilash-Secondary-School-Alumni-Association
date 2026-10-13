@@ -1,7 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { query, queryOne } from '../db/pool.js';
-import { uploadDir } from '../config/env.js';
+import { removeUpload } from '../storage.js';
 
 export async function listTeachers() {
   return query(`SELECT teacher_id, name, subject, designation, institution, photo, description, created_at FROM teachers ORDER BY name LIMIT 500`);
@@ -61,11 +59,7 @@ export async function deleteTeacher(teacherId) {
   return { deleted: true };
 }
 
-/** Delete the physical image file on disk (same fail-safe pattern as galleryService). */
+/** Remove the stored photo (local file or cloud object) — same fail-safe pattern as galleryService. */
 function removePhotoFile(filename) {
-  try {
-    fs.unlinkSync(path.join(uploadDir, filename));
-  } catch {
-    // File may already be gone; ignore cleanup failures.
-  }
+  removeUpload(filename); // best-effort, never throws
 }

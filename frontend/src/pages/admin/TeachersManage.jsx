@@ -1,3 +1,4 @@
+import { mediaUrl } from '../../utils/format.js';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Card, Input, Textarea, Button, Spinner, Alert, EmptyState, PageHeader } from '../../components/ui.jsx';
@@ -77,7 +78,7 @@ export default function TeachersManage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {(teachers || []).map((t) => (
           <Card key={t.teacher_id}>
-            {t.photo && <img src={`/uploads/${t.photo}`} alt={t.name} className="mb-2 h-32 w-full rounded-lg object-cover" />}
+            {t.photo && <img src={mediaUrl(t.photo)} alt={t.name} className="mb-2 h-32 w-full rounded-lg object-cover" />}
             <h3 className="font-bold text-ink">{t.name}</h3>
             <p className="text-sm text-ink-soft">{[t.subject, t.designation].filter(Boolean).join(' · ')}</p>
             {t.institution && <p className="mt-1 text-xs text-ink-soft">{t.institution}</p>}

@@ -1,3 +1,4 @@
+import { mediaUrl } from '../utils/format.js';
 import { useState } from 'react';
 
 /** Teacher photo with a letter-avatar fallback; a missing/failed file never shows a broken image. */
@@ -8,7 +9,7 @@ export default function TeacherPhoto({ teacher, className = '' }) {
   if (teacher?.photo && !failed) {
     return (
       <img
-        src={`/uploads/${teacher.photo}`}
+        src={mediaUrl(teacher.photo)}
         alt={name}
         onError={() => setFailed(true)}
         className={`object-cover ${className}`}

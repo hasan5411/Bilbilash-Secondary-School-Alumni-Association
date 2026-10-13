@@ -1,3 +1,4 @@
+import { mediaUrl } from '../utils/format.js';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
 import { Card, Input, Select, Textarea, Button, Spinner, Alert, PageHeader, BLOOD_GROUPS } from '../components/ui.jsx';
@@ -274,7 +275,7 @@ export default function Profile() {
         <CompletionIndicator percent={profile.profile_completion} />
         <div className="mb-4 flex items-center gap-4">
           {profile.profile_photo
-            ? <img src={`/uploads/${profile.profile_photo}`} alt="" className="h-16 w-16 rounded-full object-cover" />
+            ? <img src={mediaUrl(profile.profile_photo)} alt="" className="h-16 w-16 rounded-full object-cover" />
             : <div className="flex h-16 w-16 items-center justify-center rounded-full bg-forest/10 text-xl font-black text-moss">{profile.first_name[0]}{profile.last_name[0]}</div>}
           <div>
             <div className="font-bold text-ink">{profile.first_name} {profile.last_name}</div>

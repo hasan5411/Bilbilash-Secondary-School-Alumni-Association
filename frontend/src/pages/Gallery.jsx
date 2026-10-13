@@ -1,3 +1,4 @@
+import { mediaUrl } from '../utils/format.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
 import { Card, Button, Spinner, Alert, EmptyState, PageHeader, Badge, Input } from '../components/ui.jsx';
@@ -86,7 +87,7 @@ export default function Gallery() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="w-full shrink-0 sm:w-[70%]">
                 <div className="aspect-[4/3] w-full overflow-hidden rounded-lg bg-mist">
-                  <img src={`/uploads/${g.image_path}`} alt={g.caption || 'Gallery photo'} className="h-full w-full object-contain" />
+                  <img src={mediaUrl(g.image_path)} alt={g.caption || 'Gallery photo'} className="h-full w-full object-contain" />
                 </div>
               </div>
               <div className="flex w-full min-w-0 flex-col sm:w-[30%]">

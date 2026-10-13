@@ -1,3 +1,4 @@
+import { mediaUrl } from '../utils/format.js';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client.js';
 import { Card, Button, Input, Select, Textarea, Spinner, Alert, PageHeader, Badge, EmptyState } from '../components/ui.jsx';
@@ -165,7 +166,7 @@ function PendingReceipt({ payment, provider, onClose }) {
       </dl>
       {payment.screenshot_path && (
         <p className="mt-2 text-xs text-ink-soft">
-          Screenshot attached: <a className="text-moss underline" href={`/uploads/${payment.screenshot_path}`} target="_blank" rel="noreferrer">view</a>
+          Screenshot attached: <a className="text-moss underline" href={mediaUrl(payment.screenshot_path)} target="_blank" rel="noreferrer">view</a>
         </p>
       )}
     </Card>
@@ -713,7 +714,7 @@ export default function Payments() {
                     <td className="px-3 py-2 text-xs">{METHOD_LABELS[p.payment_method] || p.payment_method}</td>
                     <td className="px-3 py-2 font-mono text-xs">
                       {p.transaction_id}
-                      {p.screenshot_path && <a className="ml-1 text-moss underline" href={`/uploads/${p.screenshot_path}`} target="_blank" rel="noreferrer" title="View screenshot">📷</a>}
+                      {p.screenshot_path && <a className="ml-1 text-moss underline" href={mediaUrl(p.screenshot_path)} target="_blank" rel="noreferrer" title="View screenshot">📷</a>}
                     </td>
                     <td className="px-3 py-2">
                       <Badge value={statusLabel(p.status)} />

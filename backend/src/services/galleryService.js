@@ -1,8 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { query, queryOne } from '../db/pool.js';
 import { badRequest, notFound } from '../utils/errors.js';
-import { uploadDir } from '../config/env.js';
+import { removeUpload } from '../storage.js';
 import { notify, notifyModerators, NOTIFICATION_TYPES } from './notificationService.js';
 
 export async function listGallery(user) {
@@ -55,11 +53,7 @@ export async function deleteGalleryItem(galleryId) {
   const item = await queryOne(`SELECT gallery_id, image_path FROM gallery WHERE gallery_id = ? LIMIT 1`, [galleryId]);
   if (!item) throw notFound('Gallery item not found');
   await query(`DELETE FROM gallery WHERE gallery_id = ?`, [galleryId]);
-  // Delete the physical image file on disk.
-  try {
-    fs.unlinkSync(path.join(uploadDir, item.image_path));
-  } catch {
-    // File may already be gone; ignore cleanup failures.
-  }
+  // Remove the stored image (local file or cloud object) — best-effort.
+  await removeUpload(item.image_path);
   return { gallery_id: galleryId, deleted: true };
 }

@@ -1,3 +1,4 @@
+import { mediaUrl } from '../utils/format.js';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client.js';
@@ -53,7 +54,7 @@ export default function Directory() {
                   <Card className="h-full transition hover:shadow-md">
                     <div className="flex items-center gap-3">
                       {m.profile_photo
-                        ? <img src={`/uploads/${m.profile_photo}`} alt="" className="h-11 w-11 rounded-full object-cover" />
+                        ? <img src={mediaUrl(m.profile_photo)} alt="" className="h-11 w-11 rounded-full object-cover" />
                         : <div className="flex h-11 w-11 items-center justify-center rounded-full bg-forest/10 font-bold text-moss">{m.first_name?.[0]}{m.last_name?.[0]}</div>}
                       <div>
                         <div className="font-semibold text-ink">{m.first_name} {m.last_name}</div>

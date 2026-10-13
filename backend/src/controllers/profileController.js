@@ -3,6 +3,7 @@ import path from 'node:path';
 import { getOwnProfile, updateOwnProfile, validateBloodGroup } from '../services/profileService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';
+import { persistUpload } from '../storage.js';
 import { validate } from '../utils/validate.js';
 
 export const getProfile = asyncHandler(async (req, res) => {
@@ -40,7 +41,7 @@ export const updateProfile = [
       // Re-check content: reject renamed executables disguised as images.
       const buffer = fs.readFileSync(req.file.path);
       assertImageMagic(buffer);
-      photoFilename = req.file.filename;
+      photoFilename = await persistUpload(req.file); // local filename, or cloud URL when configured
       // Best-effort cleanup of a previous avatar file is intentionally skipped (simplicity).
       void path;
     }

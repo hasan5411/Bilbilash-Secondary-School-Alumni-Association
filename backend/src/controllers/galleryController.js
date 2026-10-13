@@ -3,6 +3,7 @@ import path from 'node:path';
 import { listGallery, submitGalleryItem, moderateGalleryItem, deleteGalleryItem } from '../services/galleryService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';
+import { persistUpload } from '../storage.js';
 import { validate, parsePositiveId } from '../utils/validate.js';
 
 export const list = asyncHandler(async (req, res) => {
@@ -18,8 +19,9 @@ export const submit = [
       return;
     }
     assertImageMagic(fs.readFileSync(req.file.path));
+    const imageRef = await persistUpload(req.file); // local filename, or cloud URL when configured
     const caption = (req.body.caption || '').toString().slice(0, 200);
-    const result = submitGalleryItem(req.user, req.file.filename, caption);
+    const result = submitGalleryItem(req.user, imageRef, caption);
     const data = await result;
     res.status(201).json({ success: true, message: 'Photo submitted for moderation', data });
   }),

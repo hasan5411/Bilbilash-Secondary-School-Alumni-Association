@@ -67,6 +67,14 @@ export const env = {
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME || 'bilbilash_alumni',
   },
+  // Upload storage driver. Local disk is EPHEMERAL on Render — production
+  // must use persistent object storage. 'cloudinary' requires CLOUDINARY_URL.
+  storage: {
+    driver: process.env.UPLOAD_STORAGE || (process.env.CLOUDINARY_URL ? 'cloudinary' : 'local'),
+    cloudinaryUrl: process.env.CLOUDINARY_URL || '',
+    // Test-only override of the API host (never set in production).
+    cloudinaryBase: process.env.CLOUDINARY_BASE_URL || null,
+  },
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
   authorityEmail: required('AUTHORITY_EMAIL'),

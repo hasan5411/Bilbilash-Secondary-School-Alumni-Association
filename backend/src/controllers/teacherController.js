@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import { listTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher } from '../services/teacherService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';
+import { persistUpload } from '../storage.js';
 import { validate, parsePositiveId } from '../utils/validate.js';
 
 export const list = asyncHandler(async (_req, res) => {
@@ -30,7 +31,7 @@ export const create = [
     let photoFilename;
     if (req.file) {
       assertImageMagic(fs.readFileSync(req.file.path));
-      photoFilename = req.file.filename;
+      photoFilename = await persistUpload(req.file);
     }
     const result = await createTeacher(req.user, data, photoFilename);
     res.status(201).json({ success: true, message: 'Teacher added', data: result });
@@ -45,7 +46,7 @@ export const update = [
     let photoFilename;
     if (req.file) {
       assertImageMagic(fs.readFileSync(req.file.path));
-      photoFilename = req.file.filename;
+      photoFilename = await persistUpload(req.file);
     }
     const result = await updateTeacher(id, data, photoFilename);
     res.json({ success: true, message: 'Teacher updated', data: result });

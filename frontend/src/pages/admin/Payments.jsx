@@ -1,3 +1,4 @@
+import { mediaUrl } from '../../utils/format.js';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Card, Button, Input, Select, Textarea, Spinner, Alert, PageHeader, Badge, EmptyState } from '../../components/ui.jsx';
@@ -128,7 +129,7 @@ function ReviewModal({ payment, onClose, onDone }) {
             {payment.screenshot_path && (
               <div className="col-span-2">
                 <dt className="text-ink-soft">Screenshot</dt>
-                <dd><a className="text-moss underline" href={`/uploads/${payment.screenshot_path}`} target="_blank" rel="noreferrer">Open payment screenshot ↗</a></dd>
+                <dd><a className="text-moss underline" href={mediaUrl(payment.screenshot_path)} target="_blank" rel="noreferrer">Open payment screenshot ↗</a></dd>
               </div>
             )}
           </dl>
@@ -248,7 +249,7 @@ export default function AdminPayments() {
                   <td className="px-3 py-2 text-xs">{METHOD_LABELS[p.payment_method] || p.payment_method}</td>
                   <td className="px-3 py-2 font-mono text-xs">
                     {p.transaction_id}
-                    {p.screenshot_path && <a className="ml-1 text-moss underline" href={`/uploads/${p.screenshot_path}`} target="_blank" rel="noreferrer" title="View screenshot">📷</a>}
+                    {p.screenshot_path && <a className="ml-1 text-moss underline" href={mediaUrl(p.screenshot_path)} target="_blank" rel="noreferrer" title="View screenshot">📷</a>}
                   </td>
                   <td className="px-3 py-2 text-ink-soft">{fmtDate(p.payment_date)}</td>
                   <td className="px-3 py-2">

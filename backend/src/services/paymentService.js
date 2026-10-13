@@ -1,4 +1,5 @@
 import { query, queryOne, withTransaction } from '../db/pool.js';
+import { persistUpload } from '../storage.js';
 import { badRequest, conflict, notFound } from '../utils/errors.js';
 import { getProvider, listProviderInfo, MANUAL_PROVIDERS, PAYMENT_PROVIDERS } from './paymentProvider.js';
 import { notify, notifyModerators, NOTIFICATION_TYPES } from './notificationService.js';
@@ -326,7 +327,7 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
     throw badRequest('Sender number must be a valid Bangladeshi mobile number (e.g. 01712345678)');
   }
 
-  const screenshotPath = screenshotFile ? screenshotFile.filename : null; // multer already validated it
+  const screenshotPath = screenshotFile ? await persistUpload(screenshotFile) : null; // multer validated it; stored as local filename or cloud URL
   const description = String(data.description || '').trim().slice(0, 255) || null;
 
   let paymentId;

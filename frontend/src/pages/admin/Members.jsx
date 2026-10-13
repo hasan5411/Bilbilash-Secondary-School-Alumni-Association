@@ -1,3 +1,4 @@
+import { mediaUrl } from '../../utils/format.js';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Card, Button, Input, Spinner, Alert, PageHeader, Badge, EmptyState } from '../../components/ui.jsx';
@@ -39,7 +40,7 @@ function MemberDetailModal({ userId, onClose }) {
             <>
               <div className="mt-4 flex items-center gap-4">
                 {user.profile_photo
-                  ? <img src={`/uploads/${user.profile_photo}`} alt="" className="h-16 w-16 rounded-full object-cover" />
+                  ? <img src={mediaUrl(user.profile_photo)} alt="" className="h-16 w-16 rounded-full object-cover" />
                   : <div className="flex h-16 w-16 items-center justify-center rounded-full bg-forest/10 text-xl font-black text-moss">{user.first_name?.[0]}{user.last_name?.[0]}</div>}
                 <div>
                   <div className="text-lg font-bold text-ink">{user.first_name} {user.last_name}</div>
@@ -146,7 +147,7 @@ export default function Members() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {u.profile_photo
-                              ? <img src={`/uploads/${u.profile_photo}`} alt="" className="h-9 w-9 rounded-full object-cover" />
+                              ? <img src={mediaUrl(u.profile_photo)} alt="" className="h-9 w-9 rounded-full object-cover" />
                               : <div className="flex h-9 w-9 items-center justify-center rounded-full bg-forest/10 text-xs font-bold text-moss">{u.first_name?.[0]}{u.last_name?.[0]}</div>}
                             <div>
                               <div className="font-medium text-ink">{u.first_name} {u.last_name}</div>
