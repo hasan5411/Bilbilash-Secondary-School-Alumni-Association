@@ -21,6 +21,14 @@ function getTransporter() {
     port: env.email.port,
     secure: env.email.port === 465,
     auth: { user: env.email.user, pass: env.email.appPassword },
+    // Bound every phase of the SMTP conversation. Without these, a flaky SMTP
+    // path holds the forgot-password request open indefinitely — in production
+    // (Render behind Cloudflare) that meant 50–100s waits and opaque 524s
+    // before the user saw any feedback. Typical Gmail sends complete in ~11s,
+    // so these limits only clip genuine failures.
+    connectionTimeout: 10_000, // TCP connect
+    greetingTimeout: 10_000,   // server banner after connect
+    socketTimeout: 15_000,     // inactivity during the SMTP transaction
   });
   return transporter;
 }

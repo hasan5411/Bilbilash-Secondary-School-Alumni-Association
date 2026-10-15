@@ -110,8 +110,8 @@ export async function createPasswordReset(email) {
 
   const otp = String(crypto.randomInt(100000, 1000000));
   const otpHash = await bcrypt.hash(otp, 10);
-  await query(
-    `INSERT INTO password_resets (user_id, otp_hash, expires_at) VALUES (?, ?, NOW() + (? || ' minutes')::interval)`,
+  const inserted = await query(
+    `INSERT INTO password_resets (user_id, otp_hash, expires_at) VALUES (?, ?, NOW() + (? || ' minutes')::interval) RETURNING reset_id`,
     [user.user_id, otpHash, OTP_TTL_MINUTES]
   );
 
@@ -124,7 +124,17 @@ export async function createPasswordReset(email) {
     console.log(`[auth] Password reset OTP for user #${user.user_id} (${email}): ${otp} — expires in ${OTP_TTL_MINUTES} min`);
     return { sent: true, delivered: false, devOtp: DEV_OTP_MODE() ? otp : undefined };
   }
-  // SMTP configured but delivery FAILED — do not pretend success.
+  // SMTP configured but delivery FAILED — never pretend success, and never
+  // leave this never-delivered code behind. It is the NEWEST row, and
+  // consumeOtp() only ever compares against the newest unused one, so a
+  // lingering failed-send row would silently supersede the last code that DID
+  // reach the mailbox: the user then enters their genuine received OTP and is
+  // told "Incorrect reset code" — the production bug this invalidation fixes.
+  // The 60s resend cooldown above still counts this row, so a broken SMTP
+  // server cannot be hammered with retries either.
+  if (inserted?.insertId) {
+    await query(`UPDATE password_resets SET used_at = NOW() WHERE reset_id = ? AND used_at IS NULL`, [inserted.insertId]);
+  }
   throw badRequest('Could not send the reset email. Please try again shortly.');
 }
 
