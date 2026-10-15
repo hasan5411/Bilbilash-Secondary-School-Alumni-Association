@@ -94,6 +94,16 @@ export const env = {
   // Email (password-reset OTP). All OPTIONAL: when unset, the app runs without
   // real email and the local-dev console OTP fallback stays available.
   email: {
+    // PRODUCTION transport: an email provider's HTTPS API (port 443), because
+    // Render Free blocks outbound SMTP (25/465/587) entirely. Choose one of
+    // 'resend' | 'brevo' | 'sendgrid' and set EMAIL_API_KEY + EMAIL_FROM.
+    provider: (process.env.EMAIL_PROVIDER || '').trim().toLowerCase(),
+    apiKey: (process.env.EMAIL_API_KEY || '').trim(),
+    // TEST-ONLY override of the provider API host (never set in production).
+    apiBaseUrl: process.env.EMAIL_PROVIDER_BASE_URL || null,
+    // Per-attempt timeout for the provider API call (ms).
+    apiTimeoutMs: parseInt(process.env.EMAIL_PROVIDER_TIMEOUT_MS, 10) || 8000,
+    // LOCAL-DEV transport: SMTP — used only when EMAIL_PROVIDER is unset.
     host: process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.EMAIL_PORT, 10) || 587,
     user: process.env.EMAIL_USER || '',
@@ -125,3 +135,12 @@ export const env = {
     },
   },
 };
+
+// Fail fast on a misspelled email provider: a typo would otherwise silently
+// disable delivery (the OTP flow would 400 in production with no clue why).
+if (env.email.provider && !['resend', 'brevo', 'sendgrid'].includes(env.email.provider)) {
+  console.error(
+    `[config] EMAIL_PROVIDER="${env.email.provider}" is not supported. Use one of: resend, brevo, sendgrid.`
+  );
+  process.exit(1);
+}

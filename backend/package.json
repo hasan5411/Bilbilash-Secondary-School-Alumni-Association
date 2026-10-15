@@ -11,6 +11,8 @@
     "contribution-test": "node tests/contributionTest.js",
     "authority:set-password": "node src/db/setAuthorityPassword.js",
     "smoke-test": "node tests/smokeTest.js",
+    "otp-delivery-test": "node tests/otpDeliveryTest.js",
+    "otp-flow-test": "node tests/otpFlowTest.js",
     "profile-test": "node tests/profileCompletionTest.js",
     "seed-demo": "node tests/seedDemo.js",
     "demo-e2e": "node tests/demoE2E.js",

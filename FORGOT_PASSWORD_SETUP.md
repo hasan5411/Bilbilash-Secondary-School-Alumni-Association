@@ -1,6 +1,6 @@
-# Forgot Password + Gmail OTP — Setup & Reference
+# Forgot Password + OTP Email — Setup & Reference
 
-How the password-reset flow works in the Bilbilash Alumni Community Management System, and how to configure real email delivery on localhost.
+How the password-reset flow works in the Bilbilash Alumni Community Management System, and how to configure real email delivery (HTTPS provider API in production, Gmail SMTP on localhost).
 
 ## Flow overview
 
@@ -10,7 +10,8 @@ Login page → "Forgot password?" → /forgot-password
   ↓ Backend: generic response (enumeration-safe), 60s resend cooldown
   ↓ 6-digit OTP generated (crypto.randomInt), stored as bcrypt hash in
     password_resets (5-minute expiry, single-use, 5-attempt cap)
-  ↓ OTP emailed via Gmail SMTP (nodemailer)
+  ↓ OTP emailed via the provider HTTPS API in production (Resend/Brevo/
+    SendGrid on port 443) or Gmail SMTP locally (nodemailer)
 User opens Gmail → copies code → /reset-password
   ↓ POST /api/auth/verify-otp  → code checked (expiry, attempts, reuse)
   ↓ New password + confirm → POST /api/auth/reset-password
@@ -20,9 +21,32 @@ User opens Gmail → copies code → /reset-password
   ↓ Login with the new password
 ```
 
-## Environment variables (backend/.env)
+## Environment variables (backend/.env — local; Render dashboard — production)
+
+**Production (Render) — HTTPS API transport.** Render Free cannot send
+outbound traffic on SMTP ports 25/465/587 (https://render.com/docs/free), so
+production delivers through an email provider's REST API on port 443:
 
 ```env
+EMAIL_PROVIDER=resend        # or: brevo | sendgrid
+EMAIL_API_KEY=your_provider_api_key
+EMAIL_FROM="Bilbilash Alumni <no-reply@yourdomain.com>"
+```
+
+- Pick ONE provider. The `EMAIL_FROM` address must be verified/confirmed in
+  that provider's dashboard (Resend: add + verify a domain; Brevo: verify the
+  sender; SendGrid: verified sender identity — note SendGrid's free access is
+  a 60-day trial, Resend/Brevo free tiers are permanent).
+- All three values go ONLY in the Render dashboard (Environment tab) and
+  `backend/.env` — never in Vercel, never in code, never in Git.
+- If `EMAIL_PROVIDER` is set but `EMAIL_API_KEY`/`EMAIL_FROM` is missing, the
+  server logs a clear config error at send time and forgot-password answers
+  an honest 400 (it never fakes success).
+
+**Local development — SMTP transport (used only when `EMAIL_PROVIDER` is empty):**
+
+```env
+EMAIL_PROVIDER=
 EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USER=your_address@gmail.com
@@ -57,15 +81,20 @@ Use the App Password, NEVER the normal Gmail login password.
 6. Continue → enter the code → **Verify OTP** (resend has a 60s countdown)
 7. Enter + confirm the new password → **Reset password** → log in with it.
 
-## Common SMTP errors
+## Common delivery errors
 
 | Symptom | Cause / fix |
 | --- | --- |
-| `EAUTH` / "Invalid login" | Wrong App Password, or 2-Step Verification not enabled |
-| `ESOCKET` / timeout | Network/firewall blocking port 587; try `EMAIL_PORT=465` (SSL) |
-| "Daily user sending limit exceeded" | Gmail free-tier cap (~500/day) — wait or switch sender |
-| Mail lands in Spam | Expected for app passwords; normal for local testing |
-| "Could not send the reset email" | The API refuses to claim success on delivery failure — check the backend log |
+| `ETIMEDOUT` / `ESOCKET connect ENETUNREACH …:465` from Render | Render Free **blocks outbound SMTP** (ports 25/465/587) — set `EMAIL_PROVIDER` + `EMAIL_API_KEY` + `EMAIL_FROM` instead (no SMTP port, IPv4, or timeout change can work) |
+| `EAUTH` / "Invalid login" (local SMTP) | Wrong App Password, or 2-Step Verification not enabled |
+| `ESOCKET` / timeout (local SMTP) | Network/firewall blocking port 587; try `EMAIL_PORT=465` (SSL) |
+| Provider `http_401`/`http_403` | Wrong/expired `EMAIL_API_KEY`, or `EMAIL_FROM` not verified in the provider dashboard |
+| Provider `http_429` | Provider rate limit — one automatic retry already ran; check the provider's usage page |
+| "Could not send the reset email" | The API refuses to claim success on delivery failure — check the backend log for `[email]` lines |
+
+Delivery-failure safety: a failed send **invalidates only the never-delivered
+code** (marked used at insert-then-fail), so a code that already reached the
+mailbox keeps working; the 60s resend cooldown still counts failed attempts.
 
 ## Security notes
 
