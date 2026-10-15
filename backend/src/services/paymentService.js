@@ -5,11 +5,10 @@ import { getProvider, listProviderInfo, MANUAL_PROVIDERS, PAYMENT_PROVIDERS } fr
 import { notify, notifyModerators, NOTIFICATION_TYPES } from './notificationService.js';
 // ONE authoritative contribution/due service — the payment page, profile,
 // admin summary and Analytics all agree because they all call it.
-import { MONTHLY_AMOUNTS, getMemberLedger, getMemberRates, rateForMonth, planAllocation, getPayableOutstanding } from './contributionService.js';
+import { MONTHLY_AMOUNTS, MONTHLY_MAX, getMemberLedger, getMemberRates, rateForMonth, planAllocation, getPayableOutstanding } from './contributionService.js';
 
 export { listProviderInfo };
-export { MONTHLY_AMOUNTS };
-export const MONTHLY_MAX = 100;
+export { MONTHLY_AMOUNTS, MONTHLY_MAX }; // re-exported: contributionService owns the values
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 export const OCCASIONAL_MAX = 1000000;
 export const PURPOSES = ['event_contribution', 'donation', 'help_fund', 'emergency_fund', 'other'];

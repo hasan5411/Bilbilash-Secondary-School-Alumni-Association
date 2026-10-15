@@ -51,9 +51,6 @@ export const COMPLETION_FIELDS = Object.freeze([
   'profile_photo',
 ]);
 
-/** Back-compat alias (used by earlier call sites/tests). */
-export const REQUIRED_PROFILE_FIELDS = COMPLETION_FIELDS;
-
 /** Blood groups accepted by the existing enum validation (validate.js). */
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -101,7 +98,7 @@ function isCompleted(value, field) {
   if (rule?.type === 'blood_group') return BLOOD_GROUPS.includes(value);
 
   if (rule?.type === 'boolean') {
-    // Saved 0/1 (MySQL BOOLEAN) and the form's serialized values are valid;
+    // Saved 0/1 flag and the form's serialized values are valid;
     // null / '' / whitespace / anything else is incomplete.
     if (value === true || value === false || value === 0 || value === 1) return true;
     return ['true', 'false', '1', '0', 'yes', 'no'].includes(String(value).trim().toLowerCase());

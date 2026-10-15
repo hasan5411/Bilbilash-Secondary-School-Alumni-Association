@@ -21,11 +21,25 @@ async function request(method, url, body, isForm = false) {
       body: body ? (isForm ? body : JSON.stringify(body)) : undefined,
     });
   } catch {
-    throw new Error('Cannot reach the server. Is the backend running on port 5000?');
+    // Dev: name the local command. Production: the deployed app must never
+    // surface local port/stack hints to end users.
+    throw new Error(import.meta.env.DEV
+      ? 'Cannot reach the server. Is the backend running on port 5000?'
+      : 'Cannot reach the server. Please check your internet connection and try again.');
   }
 
   let data = null;
   try { data = await res.json(); } catch { /* non-JSON */ }
+
+  // A 2xx answer that is not JSON means the request never reached the API
+  // (e.g. VITE_API_BASE missing in a split deployment, so the SPA rewrite
+  // answered with index.html). Fail loudly with a diagnosable message instead
+  // of letting callers crash on `null.data`.
+  if (res.ok && data === null && /text\/html/i.test(res.headers.get('content-type') || '')) {
+    const err = new Error('The server answered with a web page instead of API data. The API base URL is wrong for this deployment.');
+    err.status = 502;
+    throw err;
+  }
 
   if (res.status === 401 && onUnauthorized) onUnauthorized();
   if (!res.ok) {

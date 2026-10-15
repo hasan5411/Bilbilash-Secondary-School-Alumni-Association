@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { ChartBox, PALETTE } from '../../components/charts.jsx';
-import { formatNumber, formatPercent } from '../../utils/format.js';
+import { formatNumber } from '../../utils/format.js';
 import { useAnalytics } from './useAnalytics.js';
 import { KpiCard, Note, SectionLoading, SectionError, RefreshError, UpdatingBar } from './bits.jsx';
 

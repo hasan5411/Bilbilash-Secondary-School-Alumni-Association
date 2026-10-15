@@ -5,7 +5,7 @@ import { queryOne } from '../db/pool.js';
 const ROLE_RANK = { VISITOR: 1, MEMBER: 2, ADMIN: 3, AUTHORITY: 4 };
 
 /**
- * Verifies the JWT, then RE-LOADS the user + role from MySQL on every request.
+ * Verifies the JWT, then RE-LOADS the user + role from PostgreSQL on every request.
  * The token only identifies the user — role/status/active always come from the DB,
  * so forged payload claims, demoted users, and stale tokens are handled correctly.
  */

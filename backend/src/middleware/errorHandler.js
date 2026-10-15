@@ -56,6 +56,15 @@ export function errorHandler(err, _req, res, _next) {
     message = 'One of the submitted values is not allowed.';
   }
 
+  // Missing static file (express.static with fallthrough:false answers with a
+  // raw ENOENT that embeds the SERVER filesystem path). Answer a clean 404 —
+  // never echo internal paths to the client (they still land in the server log
+  // below, where they belong).
+  if (err && err.code === 'ENOENT') {
+    status = 404;
+    message = 'File not found';
+  }
+
   // Log every unexpected error server-side WITH its stack for diagnosis…
   if (!(err instanceof ApiError)) {
     console.error('[error]', err.status || '', err.code || '', err.message, err.stack || '');
@@ -68,7 +77,7 @@ export function errorHandler(err, _req, res, _next) {
     message = 'Internal server error. The incident has been logged — please try again later.';
   }
 
-  // MySQL connectivity/availability failures answer 503 with an actionable,
+  // PostgreSQL connectivity/availability failures answer 503 with an actionable,
   // non-sensitive hint. Applied AFTER the generic 500 clamp above, because a
   // DB outage must not be flattened back into an undifferentiated 500.
   if (dbFailure(err)) {

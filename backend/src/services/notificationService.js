@@ -104,8 +104,8 @@ async function recentDuplicateRecipients({ type, entityType, entityId }) {
 async function insertRows(rows) {
   for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
     const chunk = rows.slice(i, i + INSERT_CHUNK);
-    // pool.query uses execute() (prepared statements), so the mysql2 `VALUES ?`
-    // array shorthand is unavailable — build explicit placeholder groups.
+    // Parameterised INSERT: the translator only rewrites `?` placeholders, so
+    // build explicit placeholder groups instead of a VALUES-list shortcut.
     const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
     const values = chunk.flatMap((r) => [
       Number(r.recipientId), clip(r.title, 150), clip(r.message, 500), r.type,

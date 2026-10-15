@@ -2,10 +2,10 @@ import { query } from '../db/pool.js';
 import { getMembersDueReport } from './contributionService.js';
 
 /*
- * Analytics service — every number below is computed from live MySQL records.
- * There is no mock data and no hardcoded dataset anywhere in this file.
+ * Analytics service — every number below is computed from live PostgreSQL
+ * records. There is no mock data and no hardcoded dataset anywhere in this file.
  *
- * Reused business rules (see paymentService.js / schema.sql):
+ * Reused business rules (see paymentService.js / database/schema.postgresql.sql):
  *  - PAID (monthly dues)  = rows in monthly_payment_details, which are written
  *    ONLY when a monthly payment is approved (payments.status='success').
  *    Pending / rejected / failed / refunded transactions are never counted.

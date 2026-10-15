@@ -101,7 +101,7 @@ export function notificationHref(n) {
 /** YouTube-style relative time. DB stores real timestamps; never the string. */
 export function relativeTime(dateStr) {
   if (!dateStr) return '';
-  // MySQL DATETIME arrives as 'YYYY-MM-DD HH:mm:ss' — normalize for Safari,
+  // Backend DATETIME arrives as 'YYYY-MM-DD HH:mm:ss' — normalize for Safari,
   // no timezone suffix (server + browser share the same wall clock).
   const then = new Date(String(dateStr).replace(' ', 'T'));
   const diffMs = Date.now() - then.getTime();

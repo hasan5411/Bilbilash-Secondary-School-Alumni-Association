@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { listPending, listAll, approveUser, rejectUser, deactivateUser, promote, demote, removeUser, getMemberDetail } from '../controllers/userController.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { audit } from '../services/statsService.js';
 
 const router = Router();
 router.use(authenticate);

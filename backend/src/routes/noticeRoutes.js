@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { list, create, archive, remove } from '../controllers/noticeController.js';
-import { authenticate } from '../middleware/auth.js';
-import { requireRole } from '../middleware/auth.js';
+import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = Router();
 

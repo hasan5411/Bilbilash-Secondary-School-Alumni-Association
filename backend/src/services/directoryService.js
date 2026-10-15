@@ -42,8 +42,8 @@ export async function searchDirectory(filters = {}) {
       LIMIT 200`,
     params
   );
-  // active_donor is TINYINT(1) in MySQL — normalize to a real boolean so falsy
-  // values can never leak into client-side `&&` rendering as a literal "0".
+  // active_donor is stored as a 0/1 flag — normalize to a real boolean so
+  // falsy values can never leak into client-side `&&` rendering as a literal "0".
   return rows.map((r) => ({ ...r, active_donor: r.active_donor === 1 || r.active_donor === true }));
 }
 

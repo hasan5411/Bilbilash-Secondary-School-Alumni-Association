@@ -1,4 +1,4 @@
-import { query, queryOne, withTransaction } from '../db/pool.js';
+import { query, queryOne } from '../db/pool.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/errors.js';
 import { notify, NOTIFICATION_TYPES } from './notificationService.js';
 import { audit } from './statsService.js';

@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { listGallery, submitGalleryItem, moderateGalleryItem, deleteGalleryItem } from '../services/galleryService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { uploadImageMiddleware, assertImageMagic } from '../middleware/upload.js';

@@ -46,7 +46,9 @@ export function createApp() {
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
 
-  // Health check — reports API + MySQL status without crashing when MySQL is down.
+  // Health check — reports API + PostgreSQL status without crashing when the
+  // database is down (answers 200 with status:"degraded" so uptime monitors
+  // can distinguish "process dead" from "database unreachable").
   app.get('/api/health', asyncHandler(async (_req, res) => {
     try {
       const rows = await query('SELECT 1 AS ok');
