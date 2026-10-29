@@ -21,3 +21,51 @@
 body {
   @apply bg-ice text-slate-800 antialiased;
 }
+
+/* ── Print: event registration sheet (Event Management → View Registrations)
+   The browser's native print dialog does the work (Print → Save as PDF) —
+   no PDF dependency. Everything outside .print-sheet stays hidden (navbar,
+   footer, buttons, modal controls); .no-print hides the controls INSIDE the
+   sheet. thead repeats on every page and rows never split, so a long T-shirt
+   list stays readable across multiple pages. */
+@page {
+  margin: 14mm;
+}
+
+@media print {
+  .reg-overlay {
+    position: static !important;
+    overflow: visible !important;
+    background: none !important;
+    padding: 0 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-sheet thead {
+    display: table-header-group;
+  }
+  .print-sheet tr {
+    break-inside: avoid;
+  }
+}

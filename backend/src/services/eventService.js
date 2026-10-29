@@ -130,6 +130,39 @@ export async function cancelRegistration(user, eventId) {
   return { event_id: eventId, registered: false };
 }
 
+/**
+ * ADMIN/AUTHORITY: the members registered for ONE event, for the registration
+ * viewer in Event Management. Scoped strictly by event_id, so one event's list
+ * can never contain another event's rows. `total` equals the registration_count
+ * that listEvents/getEvent already report (both count event_registrations).
+ *
+ * Returns only list fields — user_id, name, phone, ssc_batch, when they
+ * registered. Never auth material (password_hash, token_version, email stays
+ * out too: contact is the phone column the admin list uses elsewhere).
+ * profiles is LEFT-joined: a member without a profile row must still appear
+ * with ssc_batch = null rather than disappearing from the list.
+ */
+export async function listEventRegistrations(eventId) {
+  const ev = await queryOne(
+    `SELECT event_id, title, event_date, start_time, location, status
+       FROM events WHERE event_id = ? LIMIT 1`,
+    [eventId]
+  );
+  if (!ev) throw notFound('Event not found');
+
+  const rows = await query(
+    `SELECT er.registration_id, er.created_at AS registered_at,
+            u.user_id, u.first_name, u.last_name, u.phone, p.ssc_batch
+       FROM event_registrations er
+       JOIN users u ON u.user_id = er.user_id
+       LEFT JOIN profiles p ON p.user_id = u.user_id
+      WHERE er.event_id = ?
+      ORDER BY er.created_at ASC, er.registration_id ASC`,
+    [eventId]
+  );
+  return { event: ev, registrations: rows, total: rows.length };
+}
+
 export async function listMyRegistrations(userId) {
   return query(
     `SELECT er.event_id, e.title, e.event_date, e.start_time, e.location, e.status
