@@ -1,4 +1,4 @@
-import { listEvents, getEvent, createEvent, updateEvent, cancelEvent, deleteEvent, registerForEvent, cancelRegistration, listMyRegistrations } from '../services/eventService.js';
+import { listEvents, getEvent, createEvent, updateEvent, cancelEvent, deleteEvent, registerForEvent, cancelRegistration, listMyRegistrations, listEventRegistrations } from '../services/eventService.js';
 import { audit } from '../services/statsService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { validate, parsePositiveId } from '../utils/validate.js';
@@ -66,6 +66,13 @@ export const unregister = asyncHandler(async (req, res) => {
   const id = parsePositiveId(req.params.id, 'event id');
   const result = await cancelRegistration(req.user, id);
   res.json({ success: true, message: 'Registration cancelled', data: result });
+});
+
+/** ADMIN/AUTHORITY only (see route). One event's registrant list. */
+export const registrations = asyncHandler(async (req, res) => {
+  const id = parsePositiveId(req.params.id, 'event id');
+  const result = await listEventRegistrations(id);
+  res.json({ success: true, data: result });
 });
 
 export const myRegistrations = asyncHandler(async (req, res) => {

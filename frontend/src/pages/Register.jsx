@@ -51,7 +51,7 @@ export default function Register() {
           <Input label="Password * (min 8 chars)" type="password" required minLength={8} value={form.password} onChange={set('password')} />
           <Input label="Phone number" value={form.phone} onChange={set('phone')} />
           <Input label="SSC batch (year)" type="number" min="1960" max="2100" value={form.ssc_batch} onChange={set('ssc_batch')} />
-          <Input label="Registration Number *" placeholder="Your academic registration number" required maxLength={50} value={form.registration_number} onChange={set('registration_number')} />
+          <Input label="Registration Number *" placeholder="Input your SSC Roll or Registration number" required maxLength={50} value={form.registration_number} onChange={set('registration_number')} />
           <Select label="Blood group" value={form.blood_group} onChange={set('blood_group')}>
             <option value="">— Select —</option>
             {BLOOD_GROUPS.map((b) => <option key={b} value={b}>{b}</option>)}

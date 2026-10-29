@@ -11,7 +11,7 @@
  * can drift out of sync.
  */
 export const COMPLETION_COLORS = Object.freeze({
-  red: '#DC2626',
+  red: '#ec0909',
   orange: '#F59E0B',
   green: '#16A34A',
 });
