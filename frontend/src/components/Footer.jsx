@@ -5,7 +5,7 @@ const FACEBOOK_URL = 'https://www.facebook.com/share/g/1F9UbsYEn5/';
 const LINKEDIN_URL = 'https://linkedin.com/company/your-alumni';
 const X_URL = 'https://x.com/your-alumni';
 const MAPS_URL = 'https://maps.app.goo.gl/iDwKM32LVx5DqTrU9';
-const CONTACT_EMAIL = 'bssalumniassociation@gmail.com';
+const CONTACT_EMAIL = 'bilbilashsecondaryschoolalumni@gmail.com';
 const CONTACT_PHONE = '01792355958';
 
 function IconBadge({ children, href, external = false, label }) {

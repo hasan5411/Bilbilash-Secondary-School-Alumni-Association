@@ -100,7 +100,7 @@ const ACTIONS = [
   {
     to: '/jobs',
     title: 'Build Your Career',
-    desc: 'Explore job opportunities and professional network.',
+    desc: 'Explore job opportunities and build professional network.',
     card: 'bg-sky-100',
     titleColor: 'text-blue-700',
     iconBg: 'bg-blue-600',
