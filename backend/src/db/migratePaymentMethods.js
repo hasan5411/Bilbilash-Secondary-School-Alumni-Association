@@ -1,4 +1,4 @@
-import { query } from './pool.js';
+import { query, withTransaction } from './pool.js';
 
 /**
  * migratePaymentMethods.js — extend the payments.payment_method constraint with
@@ -10,11 +10,20 @@ import { query } from './pool.js';
  * every 'bank' row. This migration recreates ONLY that constraint.
  *
  * Safety:
- *  - METADATA ONLY: no row is inserted, updated or deleted, and no column or
- *    table is dropped.
+ *  - METADATA ONLY: no row is inserted, updated or deleted, and no column,
+ *    index or table is dropped.
+ *  - ATOMIC: the DROP and the ADD run inside ONE transaction on ONE dedicated
+ *    connection (withTransaction: BEGIN → statements → COMMIT). Any error
+ *    issues ROLLBACK, so the table is never left without the constraint.
+ *    PostgreSQL DDL is transactional, so a failed attempt leaves the old
+ *    constraint exactly as it was.
+ *  - NON-DESTRUCTIVE: the allowed set is a strict superset of the previous one
+ *    ('test','bkash','nagad','rocket' → + 'bank'), so every existing row still
+ *    passes validation and keeps its value. All other constraints on payments
+ *    (uq_payments_txn, ck_payments_type, ck_payments_purpose,
+ *    ck_payments_status, the three foreign keys) are untouched.
  *  - Idempotent: safe to run any number of times; the allowed set is derived
  *    from the current schema file value below.
- *  - Existing values ('test','bkash','nagad','rocket') stay valid.
  *
  * Usage: cd backend && npm run migrate:payment-methods
  */
@@ -30,9 +39,17 @@ export async function migratePaymentMethods() {
     return { skipped: true, reason: 'payments table does not exist — run npm run init-db first' };
   }
 
-  await query('ALTER TABLE payments DROP CONSTRAINT IF EXISTS ck_payments_method');
-  await query(`ALTER TABLE payments ADD CONSTRAINT ck_payments_method CHECK (payment_method IN (${LIST_SQL}))`);
+  // One dedicated connection, one transaction: both ALTERs commit together or
+  // not at all. withTransaction sends BEGIN, COMMITs on success and ROLLBACKs
+  // if either statement throws (e.g. lock timeout, lost connection).
+  await withTransaction(async (conn) => {
+    await conn.query('ALTER TABLE payments DROP CONSTRAINT IF EXISTS ck_payments_method');
+    await conn.query(
+      `ALTER TABLE payments ADD CONSTRAINT ck_payments_method CHECK (payment_method IN (${LIST_SQL}))`
+    );
+  });
 
+  // Read-only confirmation, after the commit.
   const rows = await query(
     `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'ck_payments_method'`
   );
@@ -51,7 +68,7 @@ if (isMain) {
       console.log(`[migrate:payment-methods] allowed methods: ${result.methods.join(', ')}`);
     })
     .catch((err) => {
-      console.error('[migrate:payment-methods] FAILED:', err.code || '', err.message);
+      console.error('[migrate:payment-methods] FAILED (rolled back, no change applied):', err.code || '', err.message);
       process.exit(1);
     })
     .finally(() => {
