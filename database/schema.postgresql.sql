@@ -363,6 +363,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_logs (actor_id);
 --     member sends money to the association's number, submits the Transaction
 --     ID + optional screenshot; the row stays 'pending' until an admin or the
 --     authority approves ('success') or rejects it ('rejected').
+--   'bank' = MANUAL bank transfer: member transfers to the association's
+--     account (details configured in backend/.env), submits the transfer
+--     reference; same pending -> review workflow.
+-- Existing databases: run `npm run migrate:payment-methods` once to extend the
+-- ck_payments_method constraint (metadata-only, no data change).
 -- registration_number is NOT the primary key; users.user_id is the anchor.
 -- transaction_id is UNIQUE at the DB level — duplicate submissions are
 -- impossible even across concurrent requests.
@@ -391,7 +396,7 @@ CREATE TABLE IF NOT EXISTS payments (
   CONSTRAINT uq_payments_txn UNIQUE (transaction_id),
   CONSTRAINT ck_payments_type CHECK (payment_type IN ('monthly','occasional')),
   CONSTRAINT ck_payments_purpose CHECK (purpose IS NULL OR purpose IN ('event_contribution','donation','help_fund','emergency_fund','other')),
-  CONSTRAINT ck_payments_method CHECK (payment_method IN ('test','bkash','nagad','rocket')),
+  CONSTRAINT ck_payments_method CHECK (payment_method IN ('test','bkash','nagad','rocket','bank')),
   CONSTRAINT ck_payments_status CHECK (status IN ('pending','success','failed','cancelled','refunded','rejected')),
   CONSTRAINT fk_payments_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_payments_event FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE SET NULL ON UPDATE CASCADE,

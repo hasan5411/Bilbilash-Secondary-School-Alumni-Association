@@ -33,12 +33,21 @@ export async function updateTeacher(teacherId, data, photoFilename) {
     ? await queryOne(`SELECT photo FROM teachers WHERE teacher_id = ? LIMIT 1`, [teacherId])
     : null;
 
-  await query(
+  const res = await query(
     `UPDATE teachers SET name = ?, subject = ?, designation = ?, institution = ?, description = ?${photoFilename !== undefined ? ', photo = ?' : ''} WHERE teacher_id = ?`,
     photoFilename !== undefined
       ? [data.name, data.subject || null, data.designation || null, data.institution || null, data.description || null, photoFilename, teacherId]
       : [data.name, data.subject || null, data.designation || null, data.institution || null, data.description || null, teacherId]
   );
+  // An update must hit an existing row: a stale/unknown id is a 404, never a
+  // silent success. A just-uploaded replacement is dropped so it cannot linger
+  // as an orphan (the previous photo is untouched in that case).
+  if (res.affectedRows === 0) {
+    if (photoFilename) removePhotoFile(photoFilename);
+    const err = new Error('Teacher not found');
+    err.status = 404;
+    throw err;
+  }
 
   // The row now points at the new photo; drop the old file if it is no longer referenced.
   if (previous?.photo && previous.photo !== photoFilename) {

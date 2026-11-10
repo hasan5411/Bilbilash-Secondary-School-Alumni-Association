@@ -1,11 +1,13 @@
 import { mediaUrl } from '../../utils/format.js';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { Card, Input, Textarea, Button, Spinner, Alert, EmptyState, PageHeader } from '../../components/ui.jsx';
 
+const EMPTY_FORM = { name: '', subject: '', designation: '', institution: '', description: '' };
+
 export default function TeachersManage() {
   const [teachers, setTeachers] = useState(null);
-  const [form, setForm] = useState({ name: '', subject: '', designation: '', institution: '', description: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [file, setFile] = useState(null);
   const [msg, setMsg] = useState(null);
   const [error, setError] = useState('');
@@ -13,6 +15,12 @@ export default function TeachersManage() {
   const [notice, setNotice] = useState(null);
   const [confirming, setConfirming] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  // Edit mode: the teacher row being updated (null = the form adds a new one).
+  const [editing, setEditing] = useState(null);
+  // Remounting the file input clears a previously chosen file when the form
+  // switches between add and edit or moves to another teacher.
+  const [fileKey, setFileKey] = useState(0);
+  const formRef = useRef(null);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const load = useCallback(() => {
@@ -20,19 +28,51 @@ export default function TeachersManage() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  const resetForm = () => {
+    setForm(EMPTY_FORM);
+    setFile(null);
+    setEditing(null);
+    setFileKey((k) => k + 1);
+  };
+
+  const startEdit = (t) => {
+    setMsg(null);
+    setNotice(null);
+    setEditing(t);
+    setForm({
+      name: t.name || '',
+      subject: t.subject || '',
+      designation: t.designation || '',
+      institution: t.institution || '',
+      description: t.description || '',
+    });
+    setFile(null);
+    setFileKey((k) => k + 1);
+    // The form lives at the top of the page; bring it into view.
+    if (typeof formRef.current?.scrollIntoView === 'function') {
+      formRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true); setMsg(null);
     try {
       const fd = new FormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      // No new file selected -> the backend keeps the existing photo (it only
+      // touches the column when an image is actually uploaded).
       if (file) fd.append('image', file);
-      const res = await api.postForm('/api/teachers', fd);
-      setMsg({ kind: 'success', text: res.message });
-      setForm({ name: '', subject: '', designation: '', institution: '', description: '' });
-      setFile(null);
+      const res = editing
+        ? await api.putForm(`/api/teachers/${editing.teacher_id}`, fd)
+        : await api.postForm('/api/teachers', fd);
+      setMsg({ kind: 'success', text: res.message || (editing ? 'Teacher updated' : 'Teacher added') });
+      resetForm();
       load();
-    } catch (err) { setMsg({ kind: 'error', text: err.message }); }
+    } catch (err) {
+      // Nothing was written: the existing teacher row (and its photo) is intact.
+      setMsg({ kind: 'error', text: err.message });
+    }
     finally { setBusy(false); }
   };
 
@@ -42,6 +82,7 @@ export default function TeachersManage() {
     try {
       const res = await api.del(`/api/teachers/${confirming.teacher_id}`);
       setNotice({ kind: 'success', text: res?.message || `Deleted ${confirming.name}.` });
+      if (editing && editing.teacher_id === confirming.teacher_id) resetForm();
       setConfirming(null);
       load();
     } catch (e) {
@@ -55,7 +96,10 @@ export default function TeachersManage() {
     <div>
       <PageHeader title="Manage Teacher Directory" />
       <Card className="mb-5">
-        <h3 className="mb-3 font-bold text-ink">Add a teacher</h3>
+        <div ref={formRef} />
+        <h3 className="mb-3 font-bold text-ink">
+          {editing ? `Update teacher — ${editing.name}` : 'Add a teacher'}
+        </h3>
         {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
         <form onSubmit={submit} className="mt-2 grid gap-3 sm:grid-cols-2">
           <Input label="Name *" required value={form.name} onChange={set('name')} />
@@ -63,11 +107,30 @@ export default function TeachersManage() {
           <Input label="Designation" value={form.designation} onChange={set('designation')} />
           <Input label="Institution" value={form.institution} onChange={set('institution')} />
           <div className="sm:col-span-2"><Textarea label="Description" value={form.description} onChange={set('description')} /></div>
+          {editing && (
+            <div className="flex items-center gap-3 sm:col-span-2">
+              {editing.photo
+                ? <img src={mediaUrl(editing.photo)} alt={editing.name} className="h-16 w-16 rounded-lg object-cover" />
+                : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-forest/10 font-black text-moss">No photo</div>}
+              <p className="text-xs text-ink-soft">
+                {file ? `New image selected: ${file.name}` : 'Current photo. Choose a file below to replace it — leaving it empty keeps this image.'}
+              </p>
+            </div>
+          )}
           <div className="sm:col-span-2">
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(e) => setFile(e.target.files[0])}
+            <input key={fileKey} type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={(e) => setFile(e.target.files[0])}
               className="rounded-lg border border-line px-3 py-2 text-sm" />
           </div>
-          <div><Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add teacher'}</Button></div>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={busy}>
+              {busy ? 'Saving…' : editing ? 'Update teacher' : 'Add teacher'}
+            </Button>
+            {editing && (
+              <Button type="button" variant="outline" disabled={busy} onClick={() => { resetForm(); setMsg(null); }}>
+                Cancel
+              </Button>
+            )}
+          </div>
         </form>
       </Card>
 
@@ -83,8 +146,12 @@ export default function TeachersManage() {
             <p className="text-sm text-ink-soft">{[t.subject, t.designation].filter(Boolean).join(' · ')}</p>
             {t.institution && <p className="mt-1 text-xs text-ink-soft">{t.institution}</p>}
             {t.description && <p className="mt-2 text-sm text-ink-soft">{t.description}</p>}
-            <Button variant="danger" className="mt-3 !px-2 !py-1 text-xs"
-              onClick={() => { setNotice(null); setConfirming(t); }}>Delete</Button>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" className="!px-2 !py-1 text-xs"
+                onClick={() => startEdit(t)}>Update</Button>
+              <Button variant="danger" className="!px-2 !py-1 text-xs"
+                onClick={() => { setNotice(null); setConfirming(t); }}>Delete</Button>
+            </div>
           </Card>
         ))}
       </div>

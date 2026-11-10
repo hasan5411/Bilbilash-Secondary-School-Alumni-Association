@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client.js';
 import { Card, Button, Input, Select, Textarea, Spinner, Alert, PageHeader, Badge, EmptyState } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { detectPlatform, providerAppTarget } from '../utils/paymentAppLinks.js';
 
 const MONTHLY_AMOUNTS = [20, 30, 50, 100];
 const PURPOSE_LABELS = {
@@ -12,7 +13,7 @@ const PURPOSE_LABELS = {
   emergency_fund: 'Emergency Fund',
   other: 'Other',
 };
-const METHOD_LABELS = { test: 'TEST PAYMENT', bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket' };
+const METHOD_LABELS = { test: 'TEST PAYMENT', bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket', bank: 'Bank Account' };
 
 // Dev-only TEST payment simulation. Hidden from the UI; set to true to re-enable for local demos.
 const SHOW_TEST_PAYMENT_UI = false;
@@ -22,16 +23,28 @@ const SHOW_TEST_PAYMENT_UI = false;
 const FALLBACK_PROVIDERS = [
   {
     key: 'bkash', label: 'bKash', brand: '#E2136E', number: null, app_url: null,
+    android_package: 'com.bKash.customerapp',
     store_urls: { android: 'https://play.google.com/store/apps/details?id=com.bKash.customerapp', ios: 'https://apps.apple.com/app/bkash/id1351183172' },
     instructions: ['Open the bKash app on your phone (or dial *247#) and choose "Send Money".', 'Send the exact amount to the association\u2019s bKash number.', 'Copy the Transaction ID from the confirmation SMS.', 'Come back here, paste the Transaction ID and confirm — the payment is verified manually.'],
   },
   {
-    key: 'nagad', label: 'Nagad', brand: '#F6921E', number: null, app_url: null, store_urls: null,
+    key: 'nagad', label: 'Nagad', brand: '#F6921E', number: null, app_url: null,
+    android_package: 'com.konasl.nagad',
+    store_urls: { android: 'https://play.google.com/store/apps/details?id=com.konasl.nagad', ios: 'https://apps.apple.com/app/nagad/id1471844924' },
     instructions: ['Open the Nagad app on your phone (or dial *167#) and choose "Send Money".', 'Send the exact amount to the association\u2019s Nagad number.', 'Copy the Transaction ID from the confirmation SMS.', 'Come back here, paste the Transaction ID and confirm — the payment is verified manually.'],
   },
   {
-    key: 'rocket', label: 'Rocket', brand: '#8C3494', number: null, app_url: null, store_urls: null,
+    key: 'rocket', label: 'Rocket', brand: '#8C3494', number: null, app_url: null,
+    android_package: 'com.dbbl.mbs.apps.main',
+    store_urls: { android: 'https://play.google.com/store/apps/details?id=com.dbbl.mbs.apps.main', ios: 'https://apps.apple.com/app/dbbl-rocket/id1194003397' },
     instructions: ['Open the Rocket app on your phone (or dial *322#) and choose "Bank to Rocket" / "Send Money".', 'Send the exact amount to the association\u2019s Rocket number.', 'Copy the Transaction ID from the confirmation SMS.', 'Come back here, paste the Transaction ID and confirm — the payment is verified manually.'],
+  },
+  {
+    // Bank transfer: details are served by the backend ONLY when configured in
+    // backend/.env — this fallback never contains invented account numbers.
+    key: 'bank', label: 'Bank Account', brand: '#0F4C3A', number: null, app_url: null,
+    android_package: null, store_urls: null, configured: false, bank: null,
+    instructions: ['Bank transfer is not configured yet — please use bKash, Nagad or Rocket.'],
   },
 ];
 
@@ -54,6 +67,10 @@ const isMobileDevice = () => {
   if (navigator.userAgentData?.mobile === true) return true;
   return typeof window !== 'undefined' && window.matchMedia?.('(max-width: 640px)')?.matches === true;
 };
+
+// App-target selection lives in utils/paymentAppLinks.js (pure + testable):
+// REAL platform first, official store pages only, documented Android intent:
+// launch with the Play Store as fallback, App Store on iOS.
 
 // The receiving number is configured ONCE in backend/.env (bKash:
 // BKASH_NUMBER) and served to the whole UI. When it is not configured yet,
@@ -92,6 +109,52 @@ function CopyButton({ value, label = 'Copy Number' }) {
     <Button type="button" variant="outline" className="!px-3 !py-1.5 text-xs" onClick={copy}>
       {copied ? '✓ Copied!' : `📋 ${label}`}
     </Button>
+  );
+}
+
+/**
+ * Bank transfer details. Rendered ONLY from backend configuration — when the
+ * association has not published its account yet, this shows the setup notice
+ * (naming the env var) instead of any invented account number.
+ */
+function BankDetails({ provider }) {
+  if (provider?.configured === false || !provider?.bank) {
+    return (
+      <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <b>Bank transfer is not configured yet.</b> The association has not published its bank account.
+        An admin must set <code>BANK_NAME</code>, <code>BANK_ACCOUNT_NAME</code> and
+        {' '}<code>BANK_ACCOUNT_NUMBER</code> (plus optional branch/routing/instructions) in
+        {' '}<code>backend/.env</code> and restart the server. Please use bKash, Nagad or Rocket for now.
+      </div>
+    );
+  }
+  const d = provider.bank;
+  const rows = [
+    ['Bank name', d.name, false],
+    ['Account holder name', d.account_name, false],
+    ['Account number', d.account_number, true],
+    ['Branch name', d.branch_name, false],
+    ['Routing number', d.routing_number, true],
+  ].filter(([, value]) => Boolean(value));
+
+  return (
+    <div className="mt-3 rounded-lg bg-mint p-3">
+      <div className="text-xs font-semibold uppercase text-ink-soft">Transfer to (Bank Account)</div>
+      <dl className="mt-2 grid gap-2 text-sm sm:grid-cols-2">
+        {rows.map(([label, value, mono]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-xs text-ink-soft">{label}</dt>
+            <dd className="flex flex-wrap items-center gap-2">
+              <span className={`break-all font-semibold text-ink ${mono ? 'font-mono' : ''}`}>{value}</span>
+              <CopyButton value={String(value)} label="Copy" />
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {provider.bank_details?.note && (
+        <p className="mt-2 text-xs text-ink-soft">{provider.bank_details.note}</p>
+      )}
+    </div>
   );
 }
 
@@ -290,20 +353,27 @@ export default function Payments() {
   };
 
   const openProviderApp = () => {
-    // Only OFFICIAL links are ever used: a verified gateway deep link
-    // (provider.app_url, none exists today) or the provider's official
-    // app-store pages (store_urls). Opening the app is a pure client-side
-    // navigation — it can NEVER confirm or mark a payment; verification
-    // stays with the admin via the required Transaction ID.
-    const target =
-      provider?.app_url ||
-      (isMobileDevice() ? (provider?.store_urls?.ios || provider?.store_urls?.android || null) : (provider?.store_urls?.android || provider?.store_urls?.ios || null));
-    if (!target) return;
-    window.open(target, '_blank', 'noopener,noreferrer');
+    // Official destinations only, chosen by the REAL platform:
+    //  - a documented deep link from backend config, when one exists (none of
+    //    the three wallets publishes a consumer scheme today);
+    //  - Android: launch the installed app by its verified package via a
+    //    documented intent: URI, falling back to the official Play Store page;
+    //  - iOS: the official App Store page (install / Open);
+    //  - desktop: no app to open — the official listing page in a new tab.
+    // Opening the app is a pure client-side navigation; it can NEVER confirm or
+    // mark a payment — verification stays with the admin via the required ID.
+    if (!provider || provider.key === 'bank') return;
+    const target = providerAppTarget(provider, detectPlatform());
+    if (target.mode === 'none' || !target.url) return;
+    if (target.mode === 'new-tab') window.open(target.url, '_blank', 'noopener,noreferrer');
+    else window.location.href = target.url;
   };
 
   const confirmManualPay = async () => {
-    if (!provider) return setPayError('Choose a payment provider (bKash / Nagad / Rocket).');
+    if (!provider) return setPayError('Choose a payment method (bKash / Nagad / Rocket / Bank Account).');
+    if (provider.key === 'bank' && provider.configured === false) {
+      return setPayError('Bank transfer details are not configured yet — please use bKash, Nagad or Rocket.');
+    }
     const txn = txnId.trim();
     if (!TXN_RE.test(txn)) return setPayError('Enter the Transaction ID from your payment confirmation (6–64 letters, numbers, - or _).');
     if (screenshotFile && screenshotFile.size > 3 * 1024 * 1024) return setPayError('Screenshot must be 3 MB or smaller.');
@@ -374,7 +444,7 @@ export default function Payments() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="Payments" subtitle="Monthly contributions and occasional payments via bKash, Nagad, or Rocket — every payment is verified before it counts." />
+      <PageHeader title="Payments" subtitle="Monthly contributions and occasional payments via bKash, Nagad, Rocket, or bank transfer — every payment is verified before it counts." />
 
       {/* Step 1: find member by registration number */}
       <Card>
@@ -539,29 +609,37 @@ export default function Payments() {
         </Card>
       )}
 
-      {/* Step 2: choose provider (bKash / Nagad / Rocket) */}
+      {/* Step 2: choose provider (bKash / Nagad / Rocket / Bank Account) */}
       {checkout && !review && (
         <Card className="mt-4">
           <h3 className="font-bold text-ink">Choose payment method</h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            {providers.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => { setProviderKey(p.key); setPayError(''); }}
-                className={`rounded-xl border-2 p-3 text-left transition ${
-                  providerKey === p.key ? 'border-forest bg-forest/5 shadow-sm' : 'border-line bg-white hover:border-forest/40'
-                }`}
-              >
-                <ProviderChip provider={p} />
-                <div className="mt-2 text-xs text-ink-soft">Send Money to</div>
-                {p.number ? (
-                  <div className="font-mono text-sm font-semibold text-ink">{p.number}</div>
-                ) : (
-                  <div className="text-xs font-semibold text-red-500">number not configured</div>
-                )}
-              </button>
-            ))}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {providers.map((p) => {
+              const disabled = p.key === 'bank' && p.configured === false;
+              return (
+                <button
+                  key={p.key}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => { setProviderKey(p.key); setPayError(''); }}
+                  className={`rounded-xl border-2 p-3 text-left transition ${
+                    providerKey === p.key ? 'border-forest bg-forest/5 shadow-sm' : 'border-line bg-white hover:border-forest/40'
+                  } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <ProviderChip provider={p} />
+                  <div className="mt-2 text-xs text-ink-soft">{p.key === 'bank' ? 'Transfer to' : 'Send Money to'}</div>
+                  {p.key === 'bank' ? (
+                    p.bank?.name
+                      ? <div className="text-sm font-semibold text-ink">{p.bank.name}</div>
+                      : <div className="text-xs font-semibold text-red-500">not configured</div>
+                  ) : p.number ? (
+                    <div className="font-mono text-sm font-semibold text-ink">{p.number}</div>
+                  ) : (
+                    <div className="text-xs font-semibold text-red-500">number not configured</div>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {provider && (
@@ -571,10 +649,14 @@ export default function Payments() {
                 <span className="text-xs text-ink-soft">Manual payment — verified by an admin</span>
               </div>
 
-              <div className="mt-3 rounded-lg bg-mint p-3">
-                <div className="text-xs font-semibold uppercase text-ink-soft">Send money to ({provider.label})</div>
-                <div className="mt-1 flex flex-wrap items-center gap-3">{showProviderNumber(provider)}</div>
-              </div>
+              {provider.key === 'bank' ? (
+                <BankDetails provider={provider} />
+              ) : (
+                <div className="mt-3 rounded-lg bg-mint p-3">
+                  <div className="text-xs font-semibold uppercase text-ink-soft">Send money to ({provider.label})</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-3">{showProviderNumber(provider)}</div>
+                </div>
+              )}
 
               <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-ink-soft">
                 {provider.instructions.map((line, i) => <li key={i}>{line}</li>)}
@@ -583,6 +665,7 @@ export default function Payments() {
               {/* App affordance (phones) vs explainer (desktop) — opening the app
                   never confirms anything: the payment only becomes VERIFIED after
                   an admin checks the required Transaction ID. */}
+              {provider.key !== 'bank' && (
               <div className="mt-3 rounded-lg border border-line bg-mint p-3 text-sm">
                 {(provider.app_url || provider.store_urls) && isMobileDevice() && (
                   <div className="mb-2">
@@ -601,12 +684,18 @@ export default function Payments() {
                 <div className="mt-1 flex flex-wrap items-center gap-2">{showProviderNumber(provider)}</div>
                 <div className="mt-1 text-xs text-ink-soft">The Transaction ID is required — opening the app or sending money alone never confirms a payment.</div>
               </div>
+              )}
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <Input label="Sender number (optional)" placeholder="Your bKash / Nagad / Rocket number" value={senderNumber} onChange={(e) => setSenderNumber(e.target.value)} />
                 <Input
-                  label="Transaction ID (required)"
-                  placeholder="e.g. 9F2K1L8M3N"
+                  label={provider.key === 'bank' ? 'Your account number (optional)' : 'Sender number (optional)'}
+                  placeholder={provider.key === 'bank' ? 'The bank account you transferred from' : 'Your bKash / Nagad / Rocket number'}
+                  value={senderNumber}
+                  onChange={(e) => setSenderNumber(e.target.value)}
+                />
+                <Input
+                  label={provider.key === 'bank' ? 'Transfer reference / Transaction ID (required)' : 'Transaction ID (required)'}
+                  placeholder={provider.key === 'bank' ? 'Reference from your bank receipt' : 'e.g. 9F2K1L8M3N'}
                   value={txnId}
                   onChange={(e) => setTxnId(e.target.value)}
                 />

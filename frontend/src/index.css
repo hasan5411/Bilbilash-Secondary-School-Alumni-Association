@@ -29,10 +29,24 @@ body {
    sheet. thead repeats on every page and rows never split, so a long T-shirt
    list stays readable across multiple pages. */
 @page {
+  size: A4;
   margin: 14mm;
 }
 
 @media print {
+  /* Browsers drop background colours by default, which would erase the four
+     payment-status tints on paper. Applies only where the class is used. */
+  .print-keep-colors,
+  .print-keep-colors * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* The Member Information sheet is display:none on screen (class `hidden`) and
+     only becomes a block here. Stated explicitly so printing never depends on
+     utility-order luck. The event-registration sheet is already a block. */
+  .print-sheet {
+    display: block !important;
+  }
   .reg-overlay {
     position: static !important;
     overflow: visible !important;

@@ -12,9 +12,9 @@ export const providers = asyncHandler(async (_req, res) => {
 });
 
 /**
- * POST /api/payments/manual — submit a MANUAL bKash/Nagad/Rocket payment.
+ * POST /api/payments/manual — submit a MANUAL bKash/Nagad/Rocket/bank payment.
  * multipart/form-data: registration_number, payment_type (monthly|occasional),
- * payment_method (bkash|nagad|rocket), amount, billing_month (monthly) or
+ * payment_method (bkash|nagad|rocket|bank), amount, billing_month (monthly) or
  * purpose (+ optional event_id, description) (occasional), transaction_id,
  * optional sender_number, optional image (payment screenshot).
  * ALWAYS creates a PENDING payment — a submission is never an instant success;

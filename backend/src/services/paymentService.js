@@ -286,7 +286,7 @@ const PAYMENT_SELECT = `
 const TXN_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
 
 /**
- * Record a MANUAL mobile-money payment (bKash / Nagad / Rocket) as PENDING.
+ * Record a MANUAL payment (bKash / Nagad / Rocket / bank transfer) as PENDING.
  *
  * The member sends money themselves (using the number + instructions from
  * GET /providers), then submits the Transaction ID + optional screenshot.
@@ -311,6 +311,12 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
   if (!provider || !provider.manual) {
     throw badRequest(`payment_method must be one of: ${MANUAL_PROVIDERS.join(', ')}`);
   }
+  // Bank transfers are only accepted once the association's real account
+  // details are configured (backend/.env). No details are ever invented, so an
+  // unconfigured account cannot receive a "pending" submission either.
+  if (providerKey === 'bank' && provider.configured === false) {
+    throw badRequest('Bank transfer details are not configured yet — please use bKash, Nagad or Rocket.');
+  }
 
   const txnId = String(data.transaction_id || '').trim();
   if (!TXN_ID_RE.test(txnId)) {
@@ -320,10 +326,18 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
   const dup = await queryOne(`SELECT payment_id FROM payments WHERE transaction_id = ? LIMIT 1`, [txnId]);
   if (dup) throw conflict('This Transaction ID has already been submitted.');
 
-  // Optional sender number (the number the money was sent FROM).
+  // Optional sender reference: the wallet number the money was sent FROM for
+  // mobile money, or the member's own bank account number for a bank transfer.
   const senderNumber = String(data.sender_number || '').trim();
-  if (senderNumber && !/^01[3-9]\d{8}$/.test(senderNumber)) {
-    throw badRequest('Sender number must be a valid Bangladeshi mobile number (e.g. 01712345678)');
+  if (senderNumber) {
+    if (providerKey === 'bank') {
+      // Column is VARCHAR(20): digits with optional spaces/dashes.
+      if (!/^[0-9][0-9 -]{5,19}$/.test(senderNumber)) {
+        throw badRequest('Sender account number must be 6-20 digits (spaces or dashes allowed)');
+      }
+    } else if (!/^01[3-9]\d{8}$/.test(senderNumber)) {
+      throw badRequest('Sender number must be a valid Bangladeshi mobile number (e.g. 01712345678)');
+    }
   }
 
   const screenshotPath = screenshotFile ? await persistUpload(screenshotFile) : null; // multer validated it; stored as local filename or cloud URL

@@ -14,6 +14,8 @@
     "otp-delivery-test": "node tests/otpDeliveryTest.js",
     "otp-flow-test": "node tests/otpFlowTest.js",
     "event-reg-test": "node tests/eventRegViewerTest.js",
+    "teacher-update-test": "node tests/teacherUpdateTest.js",
+    "payment-methods-test": "node tests/paymentMethodsTest.js",
     "profile-test": "node tests/profileCompletionTest.js",
     "seed-demo": "node tests/seedDemo.js",
     "demo-e2e": "node tests/demoE2E.js",
@@ -21,6 +23,7 @@
     "authority-init-test": "node tests/authorityInitTest.js",
     "migrate:uploads": "node src/db/migrateUploadsToSupabase.js",
     "migrate:storage-refs": "node src/db/normalizeStorageRefs.js",
+    "migrate:payment-methods": "node src/db/migratePaymentMethods.js",
     "storage:verify": "node src/db/verifyStorageAccess.js",
     "supabase-test": "node tests/supabaseStorageTest.js"
   },

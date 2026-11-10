@@ -10,7 +10,7 @@ const PURPOSE_LABELS = {
   emergency_fund: 'Emergency Fund',
   other: 'Other',
 };
-const METHOD_LABELS = { test: 'TEST PAYMENT', bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket' };
+const METHOD_LABELS = { test: 'TEST PAYMENT', bkash: 'bKash', nagad: 'Nagad', rocket: 'Rocket', bank: 'Bank Account' };
 const monthLabel = (key) => {
   const [y, m] = String(key).split('-').map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });

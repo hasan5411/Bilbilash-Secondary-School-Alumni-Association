@@ -133,6 +133,27 @@ export const env = {
       number: bdMobileNumber('ROCKET_NUMBER') ?? bdMobileNumber('PAYMENT_ROCKET_NUMBER'),
       appUrl: process.env.PAYMENT_ROCKET_APP_URL || null,
     },
+    // BANK TRANSFER receiving account. EVERY field is OPTIONAL and there is NO
+    // default value: the association's real account details are never invented
+    // or hard-coded. When BANK_NAME + BANK_ACCOUNT_NAME + BANK_ACCOUNT_NUMBER are
+    // all set, the payment UI shows the details (with copy buttons) and the
+    // backend accepts 'bank' submissions; otherwise the method is reported as
+    // not configured and the API refuses bank payments.
+    //
+    //   BANK_NAME=...                e.g. the bank's official name
+    //   BANK_ACCOUNT_NAME=...        account holder exactly as on the account
+    //   BANK_ACCOUNT_NUMBER=...      digits only (leading zeros preserved)
+    //   BANK_BRANCH_NAME=...         optional
+    //   BANK_ROUTING_NUMBER=...      optional, 9 digits
+    //   BANK_INSTRUCTIONS=...        optional free-text note shown to members
+    bank: {
+      bankName: (process.env.BANK_NAME || '').trim() || null,
+      accountName: (process.env.BANK_ACCOUNT_NAME || '').trim() || null,
+      accountNumber: (process.env.BANK_ACCOUNT_NUMBER || '').trim() || null,
+      branchName: (process.env.BANK_BRANCH_NAME || '').trim() || null,
+      routingNumber: (process.env.BANK_ROUTING_NUMBER || '').trim() || null,
+      instructions: (process.env.BANK_INSTRUCTIONS || '').trim() || null,
+    },
   },
 };
 

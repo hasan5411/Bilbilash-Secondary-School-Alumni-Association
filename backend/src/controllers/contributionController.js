@@ -71,7 +71,10 @@ export const preview = asyncHandler(async (req, res) => {
 export const memberReport = asyncHandler(async (req, res) => {
   const q = validate(req.query, {
     search: { type: 'string', max: 100 },
-    limit: { type: 'int', min: 1, max: 200 },
+    // The service itself caps the batch at 1000 rows (Analytics already asks for
+    // 1000). The Member Information page needs the same ceiling so it can colour
+    // and print EVERY member from one batched request instead of paging.
+    limit: { type: 'int', min: 1, max: 1000 },
     offset: { type: 'int', min: 0 },
   });
   const report = await getMembersDueReport({ search: q.search ?? null, limit: q.limit, offset: q.offset });

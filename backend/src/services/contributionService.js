@@ -575,6 +575,27 @@ export async function setContributionStart(actor, targetUserId, startMonth) {
   return { user_id: Number(targetUserId), contribution_start_month: key };
 }
 
+/*
+ * Payment status colour code for the Member Information page. ONE place, built
+ * on the SAME summary numbers every other screen shows (no second due system).
+ *
+ * Priority (master spec):
+ *   1. no monthly contribution configured          -> not_configured  (red)
+ *   2. configured but no approved monthly payment  -> never_paid      (powder blue)
+ *   3. approved history and outstanding dues > 0   -> due             (light yellow)
+ *   4. approved history and nothing outstanding    -> regular         (green)
+ *
+ * Pending/rejected payments never count (they never appear in
+ * monthly_payment_details). Obligated months whose rate is unknown cannot be
+ * priced, so they are treated as outstanding rather than "up to date".
+ */
+export function memberPaymentStatus({ rateConfigured, hasApprovedMonthlyPayment, totalDue, unpricedMonths = 0 }) {
+  if (!rateConfigured) return 'not_configured';
+  if (!hasApprovedMonthlyPayment) return 'never_paid';
+  if (Number(totalDue) > 0 || Number(unpricedMonths) > 0) return 'due';
+  return 'regular';
+}
+
 /* ------------------------------------------------------------------ */
 /* Member-wise report (ADMIN/AUTHORITY) — batched, no N+1              */
 /* ------------------------------------------------------------------ */
@@ -663,11 +684,19 @@ export async function getMembersDueReport({ search = null, limit = 50, offset = 
       }
     }
     const totals = totalsBy.get(m.user_id) || { monthly_total: 0, occasional_total: 0 };
+    const rateConfigured = mRates.length > 0;
     return {
       user_id: m.user_id,
       name: `${m.first_name} ${m.last_name}`,
       registration_number: m.registration_number,
       ssc_batch: m.ssc_batch ?? null,
+      rate_configured: rateConfigured,
+      payment_status: memberPaymentStatus({
+        rateConfigured,
+        hasApprovedMonthlyPayment: mPaidList.length > 0,
+        totalDue: summary.total_due,
+        unpricedMonths: summary.rate_not_set_months.length,
+      }),
       current_rate: summary.current_rate,
       current_rate_effective_month: summary.current_rate_effective_month,
       approved_monthly_total: round2(totals.monthly_total),
