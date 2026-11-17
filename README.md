@@ -213,9 +213,9 @@ The API is the only component that touches the database and the storage service-
 
 | Requirement | Notes |
 |---|---|
-| Node.js 18+ | Developed and tested with Node.js 24 |
+| Node.js 18 or newer | Developed and tested with Node.js 24 (no `engines` field is enforced) |
 | npm | Ships with Node.js |
-| PostgreSQL 14+ | A local server, or Supabase, or the bundled `embedded-postgres` helper |
+| PostgreSQL | A local server, Supabase, or the bundled `embedded-postgres` helper |
 | Git | To clone the repository |
 
 ### 2. Clone and install dependencies
