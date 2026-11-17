@@ -164,19 +164,28 @@ async function runMigration(eventsOk, regsOk, paymentsOk) {
   const report = { skipped: false, columnsAdded: [], constraintsAdded: [], indexesCreated: [], legacyUniqueDropped: [], counts: {} };
 
   await withTransaction(async (conn) => {
-    // PRE-FLIGHT: replacing uniqueness with an active-only index must never
-    // legitimize duplicate ACTIVE registrations.
-    const [dupes] = await conn.query(
-      `SELECT event_id, user_id, COUNT(*) AS n
-         FROM event_registrations
-        GROUP BY event_id, user_id
-       HAVING COUNT(*) > 1`
+    // PRE-FLIGHT (first run only): replacing one-per-member uniqueness with an
+    // active-only index must never legitimize duplicate ACTIVE registrations.
+    // Once the partial index exists, the same member may legitimately hold
+    // several historical (cancelled) registrations for one event — expected,
+    // and already constrained to one active row by uq_event_registration_active.
+    const [alreadyMigrated] = await conn.query(
+      `SELECT COUNT(*) AS n FROM pg_indexes
+        WHERE schemaname = current_schema() AND indexname = 'uq_event_registration_active'`
     );
-    if (dupes.length) {
-      throw new Error(
-        `Refusing to migrate: ${dupes.length} duplicate (event_id, user_id) group(s) exist in event_registrations. ` +
-        'Resolve these rows manually first (never delete history automatically).'
+    if (Number(alreadyMigrated[0].n) === 0) {
+      const [dupes] = await conn.query(
+        `SELECT event_id, user_id, COUNT(*) AS n
+           FROM event_registrations
+          GROUP BY event_id, user_id
+         HAVING COUNT(*) > 1`
       );
+      if (dupes.length) {
+        throw new Error(
+          `Refusing to migrate: ${dupes.length} duplicate (event_id, user_id) group(s) exist in event_registrations. ` +
+          'Resolve these rows manually first (never delete history automatically).'
+        );
+      }
     }
 
     for (const [table, columns] of Object.entries(COLUMNS)) {
