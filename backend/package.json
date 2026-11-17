@@ -24,6 +24,10 @@
     "migrate:uploads": "node src/db/migrateUploadsToSupabase.js",
     "migrate:storage-refs": "node src/db/normalizeStorageRefs.js",
     "migrate:payment-methods": "node src/db/migratePaymentMethods.js",
+    "migrate:event-lifecycle": "node src/db/migrateEventLifecycle.js",
+    "migrate:tshirt": "node src/db/migrateTshirtManagement.js",
+    "event-lifecycle-test": "node tests/eventLifecycleTest.js",
+    "tshirt-test": "node tests/tshirtManagementTest.js",
     "storage:verify": "node src/db/verifyStorageAccess.js",
     "supabase-test": "node tests/supabaseStorageTest.js"
   },

@@ -252,6 +252,10 @@ export default function Payments() {
   const [occDesc, setOccDesc] = useState('');
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState('');
+  // Optional link to the member's own unpaid event registration, so the
+  // approved payment can confirm that exact registration (never auto-linked).
+  const [myRegs, setMyRegs] = useState([]);
+  const [registrationId, setRegistrationId] = useState('');
 
   // Manual provider checkout
   const [providers, setProviders] = useState(FALLBACK_PROVIDERS);
@@ -296,6 +300,7 @@ export default function Payments() {
     if (e) e.preventDefault();
     setLooking(true); setLookupError(''); setMember(null); setReceipt(null);
     setCheckout(null); setPendingReceipt(null); setSelectedMonth(null); setAmount(null); setStatus(null);
+    setMyRegs([]); setRegistrationId('');
     try {
       const res = await api.get(`/api/payments/lookup/${encodeURIComponent(regInput.trim())}`);
       setMember(res.data.member);
@@ -305,12 +310,34 @@ export default function Payments() {
       ]);
       setStatus(st.data);
       setEvents(ev.data.events || []);
+      if (user && Number(res.data.member.user_id) === Number(user.user_id)) {
+        api.get('/api/events/mine/registrations')
+          .then((r) => setMyRegs(r.data.registrations || []))
+          .catch(() => setMyRegs([]));
+      }
       loadHistory();
     } catch (err) { setLookupError(err.message); }
     finally { setLooking(false); }
   };
 
   const dueMonths = useMemo(() => (status ? status.months.filter((m) => !m.paid && !m.pending) : []), [status]);
+
+  const isSelf = Boolean(member && user && Number(member.user_id) === Number(user.user_id));
+  // Only the member's own ACTIVE, UNPAID registrations on an open event can
+  // receive a linked payment — mirroring the server-side ownership rule.
+  const linkableRegs = useMemo(() => {
+    if (!isSelf || purpose !== 'event_contribution' || !eventId) return [];
+    return myRegs.filter((r) => r.is_active && r.payment_status === 'unpaid'
+      && !r.archived_at && r.event_status === 'published'
+      && String(r.event_id) === String(eventId));
+  }, [isSelf, purpose, eventId, myRegs]);
+
+  useEffect(() => {
+    setRegistrationId((cur) => {
+      if (linkableRegs.length === 1) return String(linkableRegs[0].registration_id);
+      return linkableRegs.some((r) => String(r.registration_id) === cur) ? cur : '';
+    });
+  }, [linkableRegs]);
 
   // Live allocation preview while the member picks an amount. Silent on failure
   // (e.g. a non-staff user peeking at someone else) — the payment itself is
@@ -348,7 +375,7 @@ export default function Payments() {
       const amt = Number(occAmount);
       if (!Number.isFinite(amt) || amt <= 0) return setPayError('Enter a valid positive amount.');
       if (purpose === 'event_contribution' && !eventId) return setPayError('Select an event.');
-      setCheckout({ type: 'occasional', purpose, amount: amt, eventId: purpose === 'event_contribution' ? eventId : null, description: occDesc.trim() });
+      setCheckout({ type: 'occasional', purpose, amount: amt, eventId: purpose === 'event_contribution' ? eventId : null, registrationId: purpose === 'event_contribution' && registrationId ? Number(registrationId) : null, description: occDesc.trim() });
     }
   };
 
@@ -393,6 +420,7 @@ export default function Payments() {
         fd.append('purpose', checkout.purpose);
         fd.append('amount', String(checkout.amount));
         if (checkout.eventId) fd.append('event_id', String(checkout.eventId));
+        if (checkout.registrationId) fd.append('registration_id', String(checkout.registrationId));
         if (checkout.description) fd.append('description', checkout.description);
       }
       if (screenshotFile) fd.append('image', screenshotFile);
@@ -578,6 +606,24 @@ export default function Payments() {
                   {events.length === 0 && <option value="" disabled>No published events yet</option>}
                 </Select>
               )}
+              {purpose === 'event_contribution' && eventId && isSelf && (
+                <div className="sm:col-span-2">
+                  {linkableRegs.length > 0 ? (
+                    <Select label="Apply to your event registration (so approval marks it paid)" value={registrationId} onChange={(e) => setRegistrationId(e.target.value)}>
+                      <option value="">— Do not link (won&apos;t confirm a registration) —</option>
+                      {linkableRegs.map((r) => (
+                        <option key={r.registration_id} value={r.registration_id}>
+                          {r.title} — {r.registration_fee == null ? 'free' : taka(r.registration_fee)} unpaid{r.payment_deadline_display ? `, due ${r.payment_deadline_display}` : ''}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <p className="text-xs text-ink-soft">
+                      No active unpaid registration for this event — this payment will be recorded as a contribution and will not confirm a registration.
+                    </p>
+                  )}
+                </div>
+              )}
               <Input label="Amount (৳)" type="number" min="1" step="1" placeholder="e.g. 500" value={occAmount} onChange={(e) => setOccAmount(e.target.value)} />
               <div className="sm:col-span-2"><Textarea label="Description (optional)" value={occDesc} onChange={(e) => setOccDesc(e.target.value)} /></div>
             </div>
@@ -718,6 +764,12 @@ export default function Payments() {
                   <span>{checkout.type === 'monthly' ? 'Billing month' : 'Purpose'}</span>
                   <b>{checkout.type === 'monthly' ? monthLabel(checkout.billingMonth) : PURPOSE_LABELS[checkout.purpose]}</b>
                 </div>
+                {checkout.registrationId && (
+                  <div className="flex justify-between">
+                    <span>Event registration</span>
+                    <b>{myRegs.find((r) => Number(r.registration_id) === Number(checkout.registrationId))?.title || `#${checkout.registrationId}`}</b>
+                  </div>
+                )}
                 <div className="mt-1 flex justify-between border-t border-line pt-1 text-base"><span>Total</span><b className="text-moss">{taka(checkout.total ?? checkout.amount)}</b></div>
               </div>
 

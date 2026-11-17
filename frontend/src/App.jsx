@@ -38,6 +38,8 @@ import AdminEventsManage from './pages/admin/EventsManage.jsx';
 import AdminPollsManage from './pages/admin/PollsManage.jsx';
 import AdminNoticesManage from './pages/admin/NoticesManage.jsx';
 import AdminTeachersManage from './pages/admin/TeachersManage.jsx';
+import AdminIdeasManage from './pages/admin/IdeasManage.jsx';
+import AdminHelpManage from './pages/admin/HelpManage.jsx';
 import Stats from './pages/admin/Stats.jsx';
 
 function Navbar() {
@@ -151,6 +153,11 @@ export default function App() {
             <Route path="/admin/polls" element={<RequireRole min="ADMIN"><AdminPollsManage /></RequireRole>} />
             <Route path="/admin/notices" element={<RequireRole min="ADMIN"><AdminNoticesManage /></RequireRole>} />
             <Route path="/admin/teachers" element={<RequireRole min="ADMIN"><AdminTeachersManage /></RequireRole>} />
+            {/* Management entry points from the Administration Dashboard. Both reuse the
+                existing Vision & Ideas / Help Requests pages, whose admin actions are
+                already gated by isAdmin exactly as before. */}
+            <Route path="/admin/ideas" element={<RequireRole min="ADMIN"><AdminIdeasManage /></RequireRole>} />
+            <Route path="/admin/help" element={<RequireRole min="ADMIN"><AdminHelpManage /></RequireRole>} />
 
             <Route path="*" element={<div className="py-20 text-center text-slate-500">Page not found</div>} />
           </Routes>

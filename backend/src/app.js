@@ -24,6 +24,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import contributionRoutes from './routes/contributionRoutes.js';
+import internalRoutes from './routes/internalRoutes.js';
 
 export function createApp() {
   const app = express();
@@ -88,6 +89,8 @@ export function createApp() {
   app.use('/api/stats', statsRoutes);
   app.use('/api/analytics', analyticsRoutes);
   app.use('/api/contributions', contributionRoutes);
+  // Machine-only endpoints (CRON_SECRET protected). Not a public business API.
+  app.use('/api/internal', internalRoutes);
 
   // OPTIONAL single-service production mode: when SERVE_FRONTEND_DIR points at
   // the built frontend (Vite dist), the backend serves it and falls back to

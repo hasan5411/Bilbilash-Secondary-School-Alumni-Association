@@ -35,6 +35,25 @@ export function validate(body, rules) {
       else if (rule.min !== undefined && n < rule.min) errors.push(`${field} must be >= ${rule.min}`);
       else if (rule.max !== undefined && n > rule.max) errors.push(`${field} must be <= ${rule.max}`);
       else out[field] = n;
+    } else if (rule.type === 'number') {
+      const n = Number(value);
+      if (!Number.isFinite(n)) errors.push(`${field} must be a number`);
+      else if (rule.min !== undefined && n < rule.min) errors.push(`${field} must be >= ${rule.min}`);
+      else if (rule.max !== undefined && n > rule.max) errors.push(`${field} must be <= ${rule.max}`);
+      else out[field] = n;
+    } else if (rule.type === 'intArray') {
+      const arr = Array.isArray(value) ? value : null;
+      const nums = [];
+      let ok = Boolean(arr);
+      for (const item of arr || []) {
+        const n = Number(item);
+        if (!Number.isInteger(n)) { ok = false; break; }
+        if (rule.min !== undefined && n < rule.min) { ok = false; break; }
+        if (rule.max !== undefined && n > rule.max) { ok = false; break; }
+        nums.push(n);
+      }
+      if (!ok) errors.push(`${field} must be an array of integers${rule.min !== undefined ? ` >= ${rule.min}` : ''}${rule.max !== undefined ? ` and <= ${rule.max}` : ''}`);
+      else out[field] = [...new Set(nums)];
     } else if (rule.type === 'enum') {
       if (!rule.values.includes(value)) errors.push(`${field} must be one of: ${rule.values.join(', ')}`);
       else out[field] = value;

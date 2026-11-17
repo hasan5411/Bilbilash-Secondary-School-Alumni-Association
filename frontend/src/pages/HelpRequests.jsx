@@ -7,8 +7,13 @@ const CATEGORIES = ['career', 'education', 'medical', 'financial', 'blood', 'oth
 const URGENCIES = ['low', 'medium', 'high', 'emergency'];
 const emptyForm = { title: '', description: '', category: 'other', urgency: 'medium', blood_group: '', location: '', required_date: '' };
 
-export default function HelpRequests() {
+export default function HelpRequests({ manageOnly = false }) {
   const { user, isAdmin } = useAuth();
+  // Admin management controls live ONLY on the Administration Dashboard page
+  // (/admin/help). The public /help tab keeps content + submission, and a member
+  // may still close their OWN request (that is not an admin-only action).
+  const canManage = manageOnly && isAdmin;
+  const isOwner = (h) => !!user && h.user_id === user.user_id;
   const [requests, setRequests] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [msg, setMsg] = useState(null);
@@ -50,7 +55,15 @@ export default function HelpRequests() {
 
   return (
     <div>
-      <PageHeader title="Help Requests" subtitle="Ask the community for support." />
+      <PageHeader
+        title={manageOnly ? 'Manage Help Requests' : 'Help Requests'}
+        subtitle={manageOnly ? 'Update their status or delete submitted help requests.' : 'Ask the community for support.'}
+      />
+      {/* manageOnly is used by the Administration Dashboard route only: it hides the
+          member submission form, surfaces action feedback above the list, and is the
+          only place the admin management buttons are rendered. */}
+      {manageOnly && msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
+      {!manageOnly && (
       <Card className="mb-5">
         <h3 className="mb-3 font-bold text-ink">Request help</h3>
         {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
@@ -76,6 +89,7 @@ export default function HelpRequests() {
           <div><Button type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit request'}</Button></div>
         </form>
       </Card>
+      )}
 
       {loading && <Spinner />}
       {error && <Alert kind="error">{error}</Alert>}
@@ -105,12 +119,12 @@ export default function HelpRequests() {
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">{h.description}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {isAdmin && h.status === 'open' && <Button variant="outline" className="!px-2 !py-1 text-xs" onClick={() => setStatus(h.help_id, 'in_progress')}>Start progress</Button>}
-              {isAdmin && h.status === 'in_progress' && <Button variant="outline" className="!px-2 !py-1 text-xs" onClick={() => setStatus(h.help_id, 'resolved')}>Mark resolved</Button>}
-              {(isAdmin || h.user_id === user.user_id) && !['closed', 'resolved'].includes(h.status) && (
+              {canManage && h.status === 'open' && <Button variant="outline" className="!px-2 !py-1 text-xs" onClick={() => setStatus(h.help_id, 'in_progress')}>Start progress</Button>}
+              {canManage && h.status === 'in_progress' && <Button variant="outline" className="!px-2 !py-1 text-xs" onClick={() => setStatus(h.help_id, 'resolved')}>Mark resolved</Button>}
+              {(canManage || isOwner(h)) && !['closed', 'resolved'].includes(h.status) && (
                 <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => setStatus(h.help_id, 'closed')}>Close</Button>
               )}
-              {isAdmin && <Button variant="danger" className="!px-2 !py-1 text-xs" onClick={() => remove(h)}>Delete</Button>}
+              {canManage && <Button variant="danger" className="!px-2 !py-1 text-xs" onClick={() => remove(h)}>Delete</Button>}
             </div>
           </Card>
         ))}

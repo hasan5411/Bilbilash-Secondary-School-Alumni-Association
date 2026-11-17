@@ -358,12 +358,20 @@ async function main() {
   const noticeId = notice.json?.data?.notice_id;
   const helpId = help.json?.data?.help_id;
   const visionId = vision.json?.data?.vision_id;
+  // Events with registration/payment history must NOT be hard-deleted anymore
+  // (lifecycle rule), so the plain-delete case uses a history-free event.
+  const emptyEv = await call('POST', '/api/events', {
+    token: authToken,
+    body: { title: `SMOKE-${stamp} Empty Event`, event_date: '2030-01-02', capacity: 5 },
+  });
+  check('authority creates a history-free event -> 201', emptyEv.status === 201, `status ${emptyEv.status} ${emptyEv.json?.message || ''}`);
+  const emptyEventId = emptyEv.json?.data?.event_id;
   const delTargets = [
     ['notice', `/api/notices/${noticeId}`],
     ['job', `/api/jobs/${jobId2}`],
     ['help request', `/api/help/${helpId}`],
     ['poll', `/api/polls/${pollId}`],
-    ['event', `/api/events/${eventId}`],
+    ['event', `/api/events/${emptyEventId}`],
     ['vision', `/api/visions/${visionId}`],
   ];
   for (const [name, url] of delTargets) {
@@ -382,7 +390,9 @@ async function main() {
   const delP = await call('DELETE', `/api/polls/${pollId}`, { token: authToken });
   check('authority deletes poll (200)', delP.status === 200, `status ${delP.status} ${delP.json?.message || ''}`);
   const delEv = await call('DELETE', `/api/events/${eventId}`, { token: authToken });
-  check('authority deletes event (200)', delEv.status === 200, `status ${delEv.status} ${delEv.json?.message || ''}`);
+  check('event with registration history cannot be hard-deleted (409)', delEv.status === 409, `status ${delEv.status} ${delEv.json?.message || ''}`);
+  const delEmptyEv = await call('DELETE', `/api/events/${emptyEventId}`, { token: authToken });
+  check('authority deletes a history-free event (200)', delEmptyEv.status === 200, `status ${delEmptyEv.status} ${delEmptyEv.json?.message || ''}`);
   const delV = await call('DELETE', `/api/visions/${visionId}`, { token: authToken });
   check('authority deletes vision (200)', delV.status === 200, `status ${delV.status} ${delV.json?.message || ''}`);
 
@@ -391,7 +401,7 @@ async function main() {
     ['job', (await call('GET', '/api/jobs?status=approved', { token: authToken })).json?.data?.jobs?.some((j) => j.job_id === jobId2)],
     ['help request', (await call('GET', '/api/help', { token: authToken })).json?.data?.requests?.some((r) => r.help_id === helpId)],
     ['poll', (await call('GET', '/api/polls', { token: authToken })).json?.data?.polls?.some((p) => p.poll_id === pollId)],
-    ['event', (await call('GET', '/api/events', { token: authToken })).json?.data?.events?.some((e) => e.event_id === eventId)],
+    ['event', (await call('GET', '/api/events', { token: authToken })).json?.data?.events?.some((e) => e.event_id === emptyEventId)],
     ['vision', (await call('GET', '/api/visions', { token: authToken })).json?.data?.visions?.some((v) => v.vision_id === visionId)],
   ];
   for (const [name, stillThere] of goneChecks) {
@@ -403,17 +413,27 @@ async function main() {
   const votesGone = await dbQuery(`SELECT COUNT(*) AS c FROM poll_votes WHERE poll_id = ?`, [pollId]);
   const optsGone = await dbQuery(`SELECT COUNT(*) AS c FROM poll_options WHERE poll_id = ?`, [pollId]);
   check('poll options + votes cascade with the poll', Number(votesGone[0].c) === 0 && Number(optsGone[0].c) === 0, `votes ${votesGone[0].c} options ${optsGone[0].c}`);
-  const regsGone = await dbQuery(`SELECT COUNT(*) AS c FROM event_registrations WHERE event_id = ?`, [eventId]);
-  check('event registrations cascade with the event', Number(regsGone[0].c) === 0, `count ${regsGone[0].c}`);
+  const regsKept = await dbQuery(`SELECT COUNT(*) AS c FROM event_registrations WHERE event_id = ?`, [eventId]);
+  check('refused event deletion preserves registration history', Number(regsKept[0].c) === 1, `count ${regsKept[0].c}`);
 
   const deadNotifs = await dbQuery(
     `SELECT COUNT(*) AS c FROM notifications
-      WHERE (related_entity_type = 'event' AND related_entity_id = ?)
-         OR (related_entity_type = 'poll' AND related_entity_id = ?)
+      WHERE (related_entity_type = 'poll' AND related_entity_id = ?)
          OR (related_entity_type = 'job' AND related_entity_id = ?)`,
-    [eventId, pollId, jobId2]
+    [pollId, jobId2]
   );
-  check('notifications linking to deleted entities cleaned up', Number(deadNotifs[0].c) === 0, `count ${deadNotifs[0].c}`);
+  check('notifications linking to deleted polls/jobs cleaned up', Number(deadNotifs[0].c) === 0, `count ${deadNotifs[0].c}`);
+  const evNotifs = await dbQuery(
+    `SELECT COUNT(*) AS c FROM notifications WHERE related_entity_type = 'event' AND related_entity_id = ?`,
+    [eventId]
+  );
+  check('event notifications preserved while the event exists', Number(evNotifs[0].c) >= 1, `count ${evNotifs[0].c}`);
+
+  // The lifecycle replacement for hard-deleting an event with history: archive.
+  const archEv = await call('PUT', `/api/events/${eventId}/archive`, { token: authToken });
+  check('event with history can be archived instead (200)', archEv.status === 200, `status ${archEv.status} ${archEv.json?.message || ''}`);
+  const memberEvents = (await call('GET', '/api/events')).json?.data?.events || [];
+  check('archived event hidden from the public listing', !memberEvents.some((e) => e.event_id === eventId), 'still visible');
 
   section('12) Blood group search');
   const blood = await call('GET', '/api/blood/search?blood_group=O%2B');

@@ -49,6 +49,8 @@ export default function Stats() {
             <Link to="/admin/notices" className="rounded-xl bg-white p-5 font-semibold text-ink shadow-sm ring-1 ring-line transition hover:shadow-md">📢 Manage notices →</Link>
             <Link to="/admin/polls" className="rounded-xl bg-white p-5 font-semibold text-ink shadow-sm ring-1 ring-line transition hover:shadow-md">📊 Manage polls →</Link>
             <Link to="/admin/teachers" className="rounded-xl bg-white p-5 font-semibold text-ink shadow-sm ring-1 ring-line transition hover:shadow-md">🎓 Manage teachers →</Link>
+            <Link to="/admin/ideas" className="rounded-xl bg-white p-5 font-semibold text-ink shadow-sm ring-1 ring-line transition hover:shadow-md">💡 Manage Vision & Ideas →</Link>
+            <Link to="/admin/help" className="rounded-xl bg-white p-5 font-semibold text-ink shadow-sm ring-1 ring-line transition hover:shadow-md">🤝 Manage Help Requests →</Link>
           </div>
         </>
       )}

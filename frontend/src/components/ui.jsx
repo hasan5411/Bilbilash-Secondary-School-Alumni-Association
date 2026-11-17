@@ -48,12 +48,12 @@ export function Select({ label, children, ...props }) {
   );
 }
 
-export function Textarea({ label, ...props }) {
+export function Textarea({ label, className = '', ...props }) {
   return (
     <label className="block">
       {label && <span className="mb-1 block text-sm font-medium text-ink">{label}</span>}
       <textarea
-        className="min-h-24 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
+        className={`min-h-24 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-forest focus:ring-2 focus:ring-forest/20 ${className}`}
         {...props}
       />
     </label>
@@ -62,6 +62,7 @@ export function Textarea({ label, ...props }) {
 
 const BADGE_COLORS = {
   pending: 'bg-sun/20 text-yellow-800', approved: 'bg-emerald-100 text-emerald-700', published: 'bg-emerald-100 text-emerald-700',
+  active: 'bg-emerald-100 text-emerald-700',
   open: 'bg-emerald-100 text-emerald-700', rejected: 'bg-red-100 text-red-600', closed: 'bg-mist text-ink-soft',
   archived: 'bg-mist text-ink-soft', inactive: 'bg-mist text-ink-soft', cancelled: 'bg-red-100 text-red-600',
   resolved: 'bg-emerald-100 text-emerald-700', in_progress: 'bg-sky-100 text-sky-700', submitted: 'bg-sky-100 text-sky-700',

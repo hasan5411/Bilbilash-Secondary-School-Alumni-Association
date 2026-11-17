@@ -5,8 +5,11 @@ import { useAuth } from '../context/AuthContext.jsx';
 
 const CATEGORIES = ['education', 'welfare', 'event', 'infrastructure', 'other'];
 
-export default function Visions() {
+export default function Visions({ manageOnly = false }) {
   const { isAdmin } = useAuth();
+  // Admin management controls live ONLY on the Administration Dashboard page
+  // (/admin/ideas). The public /visions tab shows content + submission only.
+  const canManage = manageOnly && isAdmin;
   const [visions, setVisions] = useState(null);
   const [form, setForm] = useState({ title: '', description: '', category: 'education' });
   const [msg, setMsg] = useState(null);
@@ -48,7 +51,15 @@ export default function Visions() {
 
   return (
     <div>
-      <PageHeader title="Vision & Ideas" subtitle="Share ideas to improve the association and the school." />
+      <PageHeader
+        title={manageOnly ? 'Manage Vision & Ideas' : 'Vision & Ideas'}
+        subtitle={manageOnly ? 'Review, approve, mark implemented or delete submitted ideas.' : 'Share ideas to improve the association and the school.'}
+      />
+      {/* manageOnly is used by the Administration Dashboard route only: it hides the
+          member submission form and surfaces action feedback above the list, and it
+          is the only place the admin management buttons are rendered. */}
+      {manageOnly && msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
+      {!manageOnly && (
       <Card className="mb-5">
         <h3 className="mb-3 font-bold text-ink">Submit a new idea</h3>
         {msg && <Alert kind={msg.kind}>{msg.text}</Alert>}
@@ -61,6 +72,7 @@ export default function Visions() {
           <div><Button type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit idea'}</Button></div>
         </form>
       </Card>
+      )}
 
       {loading && <Spinner />}
       {error && <Alert kind="error">{error}</Alert>}
@@ -76,7 +88,7 @@ export default function Visions() {
               <Badge value={v.status} />
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">{v.description}</p>
-            {isAdmin && (
+            {canManage && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {v.status === 'pending' && <Button variant="outline" className="!px-2 !py-1 text-xs" onClick={() => moderate(v.vision_id, 'approve')}>Approve</Button>}
                 {v.status !== 'rejected' && <Button variant="danger" className="!px-2 !py-1 text-xs" onClick={() => moderate(v.vision_id, 'reject')}>Reject</Button>}

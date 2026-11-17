@@ -89,6 +89,10 @@ export const env = {
   },
   jwtSecret: required('JWT_SECRET'),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
+  // Shared secret for protected internal endpoints (registration expiry
+  // scheduler). Unset => the internal endpoint answers 503 and does nothing.
+  // Never sent to the browser and never logged.
+  cronSecret: (process.env.CRON_SECRET || '').trim() || null,
   authorityEmail: required('AUTHORITY_EMAIL'),
   authorityPassword: required('AUTHORITY_PASSWORD'),
   // Email (password-reset OTP). All OPTIONAL: when unset, the app runs without

@@ -246,18 +246,31 @@ export async function createTestPayment(actor, data) {
 
     await getProvider('test').charge({ amount, senderNumber });
 
-    paymentId = await withTransaction(async (conn) => {
+      paymentId = await withTransaction(async (conn) => {
+      let eventId = purpose === 'event_contribution' && data.event_id ? Number(data.event_id) : null;
+      let registrationId = null;
+      const hasLink = data.registration_id !== undefined && data.registration_id !== null && data.registration_id !== '';
+      if (hasLink) {
+        if (purpose !== 'event_contribution') {
+          throw badRequest('registration_id is only allowed for event contribution payments');
+        }
+        const linked = await resolveRegistrationLink(conn, member.user_id, data);
+        eventId = Number(linked.event_id);
+        registrationId = Number(linked.registration_id);
+      }
       const [res] = await conn.query(
-        `INSERT INTO payments (user_id, reg_number, payment_type, purpose, event_id, amount, payment_method, sender_number, transaction_id, status, description)
-         VALUES (?, ?, 'occasional', ?, ?, ?, 'test', ?, ?, 'success', ?)
+        `INSERT INTO payments (user_id, reg_number, payment_type, purpose, event_id, registration_id, amount, payment_method, sender_number, transaction_id, status, description)
+         VALUES (?, ?, 'occasional', ?, ?, ?, ?, 'test', ?, ?, 'success', ?)
          RETURNING payment_id`,
         [
-          member.user_id, member.registration_number, purpose,
-          purpose === 'event_contribution' && data.event_id ? Number(data.event_id) : null,
+          member.user_id, member.registration_number, purpose, eventId, registrationId,
           amount, senderNumber, txnId,
           String(data.description || '').trim().slice(0, 255) || null,
         ]
       );
+      // A TEST payment is immediately successful, so a linked registration must
+      // be recalculated in the SAME transaction (same rule as manual approval).
+      if (registrationId) await recalcRegistrationPayment(conn, registrationId);
       return res.insertId;
     });
   } else {
@@ -269,6 +282,7 @@ export async function createTestPayment(actor, data) {
 
 const PAYMENT_SELECT = `
   SELECT pay.payment_id, pay.reg_number, pay.payment_type, pay.purpose, pay.event_id,
+         pay.registration_id,
          e.title AS event_title, pay.amount, pay.payment_method, pay.sender_number,
          pay.transaction_id, pay.payment_date, pay.billing_month, pay.screenshot_path,
          pay.status, pay.description, pay.review_note, pay.reviewed_by, pay.reviewed_at,
@@ -280,6 +294,76 @@ const PAYMENT_SELECT = `
     LEFT JOIN profiles p ON p.user_id = u.user_id
     LEFT JOIN events e ON e.event_id = pay.event_id
     LEFT JOIN users ru ON ru.user_id = pay.reviewed_by`;
+
+/**
+ * Resolve an EXPLICIT payment → registration link (registration_id). Only the
+ * owner's ACTIVE, still-UNPAID registration on an open event may receive a
+ * payment, and a declared event_id must match. Old optional event
+ * contributions (no registration_id) are never auto-linked.
+ */
+async function resolveRegistrationLink(conn, userId, data) {
+  const regId = Number(data.registration_id);
+  if (!Number.isInteger(regId) || regId <= 0) throw badRequest('Invalid registration id');
+  const [rows] = await conn.query(
+    `SELECT er.registration_id, er.user_id, er.event_id, er.status, er.payment_status,
+            e.status AS event_status, e.archived_at
+       FROM event_registrations er JOIN events e ON e.event_id = er.event_id
+      WHERE er.registration_id = ? LIMIT 1`,
+    [regId]
+  );
+  const reg = rows[0];
+  if (!reg) throw badRequest('Selected registration not found');
+  if (Number(reg.user_id) !== Number(userId)) {
+    throw badRequest('The payment must belong to the member who owns the registration');
+  }
+  if (reg.status !== 'active') throw conflict('This registration is cancelled and cannot receive new payments.');
+  if (reg.event_status === 'cancelled' || reg.archived_at) throw conflict('This event is not accepting payments.');
+  if (reg.payment_status !== 'unpaid') throw conflict('This registration has no outstanding payment.');
+  if (data.event_id && Number(data.event_id) !== Number(reg.event_id)) {
+    throw badRequest('The selected event does not match the registration');
+  }
+  return reg;
+}
+
+/**
+ * Recalculate a registration's approved amount from payments EXPLICITLY linked
+ * to it (status = success). Runs inside the caller's transaction with the
+ * registration row locked. Never combines monthly payments or unlinked
+ * contributions, and never reactivates a cancelled registration.
+ */
+async function recalcRegistrationPayment(conn, registrationId) {
+  const [regRows] = await conn.query(
+    `SELECT registration_id, status, payment_status, registration_fee_snapshot
+       FROM event_registrations WHERE registration_id = ? FOR UPDATE`,
+    [registrationId]
+  );
+  const reg = regRows[0];
+  if (!reg) return null;
+  const [sumRows] = await conn.query(
+    `SELECT COALESCE(SUM(amount), 0) AS approved FROM payments
+      WHERE registration_id = ? AND status = 'success'`,
+    [registrationId]
+  );
+  const approved = Number(sumRows[0].approved);
+  const fee = reg.registration_fee_snapshot === null ? null : Number(reg.registration_fee_snapshot);
+  const satisfied = fee !== null && approved >= fee;
+  if (reg.status === 'active' && satisfied && reg.payment_status !== 'paid') {
+    await conn.query(
+      `UPDATE event_registrations
+          SET payment_status = 'paid', confirmed_at = NOW(), payment_deadline = NULL
+        WHERE registration_id = ? AND status = 'active'`,
+      [registrationId]
+    );
+  }
+  return {
+    registration_id: Number(registrationId),
+    approved,
+    fee,
+    satisfied,
+    registration_status: reg.status,
+    cancelled: reg.status !== 'active',
+  };
+}
 
 // Manual Transaction IDs: 6–64 chars, letters/numbers/dash/underscore.
 // (bKash TrxIDs are ~10 alphanumeric chars; keep the rule permissive but sane.)
@@ -304,6 +388,12 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
   const member = await findMemberByRegNumber(reg);
   if (!isStaff && Number(member.user_id) !== Number(actor.user_id)) {
     throw badRequest('You can only make payments for your own registration number');
+  }
+
+  // registration_id is a registration-specific LINK (event contributions only).
+  const hasLink = data.registration_id !== undefined && data.registration_id !== null && data.registration_id !== '';
+  if (hasLink && data.payment_type !== 'occasional') {
+    throw badRequest('registration_id is only allowed for event contribution payments');
   }
 
   const providerKey = String(data.payment_method || '').trim();
@@ -388,15 +478,22 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
       }
 
       // Occasional payments never touch monthly_payment_details — they can
-      // never affect the monthly Due/Paid calculation.
+      // never affect the monthly Due/Paid calculation. A registration_id makes
+      // this payment count ONLY toward that exact registration on approval.
       paymentId = await withTransaction(async (conn) => {
+        let eventId = purpose === 'event_contribution' && data.event_id ? Number(data.event_id) : null;
+        let registrationId = null;
+        if (hasLink) {
+          const linked = await resolveRegistrationLink(conn, member.user_id, data);
+          eventId = Number(linked.event_id);
+          registrationId = Number(linked.registration_id);
+        }
         const [res] = await conn.query(
-          `INSERT INTO payments (user_id, reg_number, payment_type, purpose, event_id, amount, payment_method, sender_number, transaction_id, screenshot_path, status, description)
-           VALUES (?, ?, 'occasional', ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+          `INSERT INTO payments (user_id, reg_number, payment_type, purpose, event_id, registration_id, amount, payment_method, sender_number, transaction_id, screenshot_path, status, description)
+           VALUES (?, ?, 'occasional', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
            RETURNING payment_id`,
           [
-            member.user_id, member.registration_number, purpose,
-            purpose === 'event_contribution' && data.event_id ? Number(data.event_id) : null,
+            member.user_id, member.registration_number, purpose, eventId, registrationId,
             amount, providerKey, senderNumber || null, txnId, screenshotPath, description,
           ]
         );
@@ -448,13 +545,31 @@ export async function reviewPayment(actor, paymentId, decision) {
     // outside-the-transaction check and allocate the money twice. A locking
     // read sees the latest committed status, so the loser rolls back with 409.
     const [lockedRows] = await conn.query(
-      'SELECT payment_id, user_id, payment_type, amount, billing_month, status FROM payments WHERE payment_id = ? FOR UPDATE',
+      `SELECT payment_id, user_id, payment_type, amount, billing_month, status, event_id, registration_id
+         FROM payments WHERE payment_id = ? FOR UPDATE`,
       [paymentId]
     );
     const locked = lockedRows?.[0];
     if (!locked) throw notFound('Payment not found');
     if (locked.status !== 'pending') {
       throw conflict(`This payment was already reviewed (status: ${locked.status})`);
+    }
+
+    // Registration-specific payments must still match the linked registration's
+    // owner and event — never confirm a different member's registration.
+    if (locked.registration_id) {
+      const [regRows] = await conn.query(
+        `SELECT user_id, event_id, status FROM event_registrations WHERE registration_id = ?`,
+        [locked.registration_id]
+      );
+      const reg = regRows[0];
+      if (!reg) throw conflict('The linked registration no longer exists');
+      if (Number(reg.user_id) !== Number(locked.user_id)) {
+        throw conflict('This payment does not belong to the registration owner');
+      }
+      if (locked.event_id && Number(locked.event_id) !== Number(reg.event_id)) {
+        throw conflict('This payment event does not match the registration event');
+      }
     }
 
     if (status === 'success' && locked.payment_type === 'monthly') {
@@ -479,7 +594,32 @@ export async function reviewPayment(actor, paymentId, decision) {
       `UPDATE payments SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = NOW() WHERE payment_id = ?`,
       [status, note, actor.user_id, locked.payment_id]
     );
+
+    // Registration-linked payment: recalculate the approved sum in the SAME
+    // transaction. A fully-covered fee confirms the registration; a partial
+    // payment leaves it unpaid. A cancelled/expired registration is NEVER
+    // reactivated — the money is kept and flagged for manual reconciliation.
+    if (status === 'success' && locked.registration_id) {
+      const recalculated = await recalcRegistrationPayment(conn, locked.registration_id);
+      if (recalculated?.cancelled && !note) {
+        await conn.query(
+          `UPDATE payments SET review_note = ? WHERE payment_id = ?`,
+          ['Approved after registration cancellation — manual reconciliation required.', locked.payment_id]
+        );
+      }
+    }
   });
+
+  const reviewed = await getPayment(paymentId);
+  if (reviewed.registration_id) {
+    const reg = await queryOne(
+      `SELECT status, payment_status, confirmed_at FROM event_registrations WHERE registration_id = ? LIMIT 1`,
+      [reviewed.registration_id]
+    );
+    reviewed.registration_status = reg?.status || null;
+    reviewed.registration_payment_status = reg?.payment_status || null;
+    reviewed.reconciliation_required = Boolean(status === 'success' && reg && reg.status === 'cancelled');
+  }
 
   // Best-effort notification to the member (never fails the review itself).
   try {
@@ -490,7 +630,7 @@ export async function reviewPayment(actor, paymentId, decision) {
     }
   } catch { /* notification is best-effort */ }
 
-  return getPayment(paymentId);
+  return reviewed;
 }
 
 /** Full receipt detail incl. covered months for monthly payments. */

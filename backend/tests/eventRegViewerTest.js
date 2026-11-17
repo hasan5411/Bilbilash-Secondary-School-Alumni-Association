@@ -217,8 +217,106 @@ async function main() {
 
     const cancelEvent = await call('PUT', `/api/events/${evB}/cancel`, {}, tok.admin);
     check('admin can still cancel an event (200)', cancelEvent.status === 200, `status ${cancelEvent.status}`);
-    check('cancelled event still lists its registrations',
-      (await call('GET', url(evB), null, tok.admin)).json?.data?.total === 1);
+    // Cancelling the event cascades to its active registrations (distinct
+    // reason), so history is found in the cancelled view — never lost.
+    const evBCancelled = (await call('GET', `${url(evB)}?view=cancelled`, null, tok.admin)).json?.data;
+    check('cancelled event still lists its registrations (cancelled view, event reason)',
+      evBCancelled?.total === 1 && evBCancelled.registrations[0]?.cancel_reason === 'Event cancelled',
+      JSON.stringify({ total: evBCancelled?.total, reason: evBCancelled?.registrations?.[0]?.cancel_reason }));
+    check('cancelled event has no active registrations',
+      (await call('GET', url(evB), null, tok.admin)).json?.data?.total === 0);
+
+    // ── E) Lifecycle metadata: fee, eligibility, views, print filter ───────
+    // Extends the original coverage — every earlier assertion stays untouched.
+    section('E) Lifecycle metadata in the same endpoints');
+    const lifeDate = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+    const mkLife = async (title, extra = {}) => {
+      const r = await call('POST', '/api/events',
+        { title, event_date: lifeDate, capacity: 50, location: 'Hall', ...extra }, tok.admin);
+      check(`create lifecycle event "${title}"`, r.status === 201, `status ${r.status} ${r.message}`);
+      return r.json?.data?.event_id;
+    };
+    const evPaid = await mkLife(`EVRG-${stamp}-PAID`, { registration_fee: 250, eligible_batches: [2010] });
+    const evFree = await mkLife(`EVRG-${stamp}-FREE`);
+
+    // Event list exposes fee/eligibility + per-member availability.
+    const m2Events = (await call('GET', '/api/events', null, tok.m2)).json?.data?.events || [];
+    const paidForM2 = m2Events.find((e) => e.event_id === evPaid);
+    check('event list exposes fee + eligible batches',
+      paidForM2?.registration_fee === 250 && JSON.stringify(paidForM2?.eligible_batches) === '[2010]',
+      JSON.stringify(paidForM2));
+    check('ineligible member sees can_register=false', paidForM2?.can_register === false, JSON.stringify(paidForM2?.can_register));
+    check('ineligible member gets the exact batch message',
+      paidForM2?.eligibility_reason === 'This event is exclusively available to selected SSC batches.',
+      String(paidForM2?.eligibility_reason));
+    const m1Events = (await call('GET', '/api/events', null, tok.m1)).json?.data?.events || [];
+    const paidForM1 = m1Events.find((e) => e.event_id === evPaid);
+    check('eligible member sees can_register=true',
+      paidForM1?.can_register === true && paidForM1?.eligible === true, JSON.stringify(paidForM1?.can_register));
+
+    // Server-side eligibility: a batchless member is refused by the API.
+    const m2Try = await reg(tok.m2, evPaid);
+    check('restricted event blocks a batchless member (403)', m2Try.status === 403, `status ${m2Try.status}`);
+    check('blocked registration uses the exact message',
+      m2Try.message === 'This event is exclusively available to selected SSC batches.', m2Try.message);
+
+    // Eligible member registers: unpaid + 5-day deadline.
+    const m1reg = await reg(tok.m1, evPaid);
+    check('eligible member registers for the paid event', m1reg.status === 201, `status ${m1reg.status} ${m1reg.message}`);
+    check('registration reports unpaid + deadline',
+      m1reg.json?.data?.payment_status === 'unpaid' && Boolean(m1reg.json?.data?.payment_deadline),
+      JSON.stringify(m1reg.json?.data));
+
+    // Admin views: active / pending / invalid.
+    const paidActive = (await call('GET', `${url(evPaid)}?view=active`, null, tok.admin)).json?.data;
+    check('active view exposes fee snapshot + remaining amount',
+      paidActive?.total === 1 && paidActive.registrations[0].registration_fee === 250 &&
+      paidActive.registrations[0].remaining_amount === 250, JSON.stringify(paidActive?.registrations?.[0]));
+    check('active view exposes the payment deadline',
+      Boolean(paidActive?.registrations?.[0]?.payment_deadline), JSON.stringify(paidActive?.registrations?.[0]));
+    const paidPending = (await call('GET', `${url(evPaid)}?view=pending`, null, tok.admin)).json?.data;
+    check('pending view lists the unpaid registration',
+      paidPending?.total === 1 && paidPending.registrations[0].user_id === ids.m1, JSON.stringify(paidPending?.total));
+    check('view counts roll up active + pending',
+      paidPending?.counts?.active === 1 && paidPending?.counts?.pending === 1, JSON.stringify(paidPending?.counts));
+    const badView = await call('GET', `${url(evPaid)}?view=bogus`, null, tok.admin);
+    check('invalid view → 400', badView.status === 400, `status ${badView.status}`);
+
+    // Participant/print list excludes unpaid rows.
+    const ppPending = await call('GET', `/api/events/${evPaid}/participants`, null, tok.admin);
+    check('unpaid participant excluded from the print list',
+      ppPending.status === 200 && ppPending.json?.data?.total === 0, JSON.stringify(ppPending.json?.data));
+    const ppMember = await call('GET', `/api/events/${evPaid}/participants`, null, tok.m1);
+    check('participant list is ADMIN/AUTHORITY only (403)', ppMember.status === 403, `status ${ppMember.status}`);
+
+    // Free unrestricted event: batchless member succeeds; included in print.
+    const freeReg = await reg(tok.m2, evFree);
+    check('batchless member can register for an unrestricted free event', freeReg.status === 201, `status ${freeReg.status}`);
+    check('free registration is not_required with no deadline',
+      freeReg.json?.data?.payment_status === 'not_required' && freeReg.json?.data?.payment_deadline === null,
+      JSON.stringify(freeReg.json?.data));
+    const ppFree = (await call('GET', `/api/events/${evFree}/participants`, null, tok.authority)).json?.data;
+    check('confirmed free participant included in the print list',
+      ppFree?.total === 1 && ppFree.registrations[0].user_id === ids.m2, JSON.stringify(ppFree?.total));
+
+    // Cancellation moves the row between views; history is preserved.
+    const m1c = await call('DELETE', `/api/events/${evPaid}/register`, null, tok.m1);
+    check('member cancels when more than 10 days remain (200)', m1c.status === 200, `status ${m1c.status} ${m1c.message}`);
+    const afterActive = (await call('GET', `${url(evPaid)}?view=active`, null, tok.admin)).json?.data;
+    const afterCancelled = (await call('GET', `${url(evPaid)}?view=cancelled`, null, tok.admin)).json?.data;
+    check('cancelled member leaves the active view', afterActive?.total === 0, JSON.stringify(afterActive?.total));
+    check('cancelled view shows reason + cancellation date',
+      afterCancelled?.total === 1 && afterCancelled.registrations[0].cancel_reason === 'Cancelled by member' &&
+      Boolean(afterCancelled.registrations[0].cancelled_at), JSON.stringify(afterCancelled?.registrations?.[0]));
+    check('viewer counts reflect the new state',
+      afterActive?.counts?.active === 0 && afterActive?.counts?.cancelled === 1, JSON.stringify(afterActive?.counts));
+
+    // My Registrations exposes lifecycle state and cancel availability.
+    const mineLife = (await call('GET', '/api/events/mine/registrations', null, tok.m2)).json?.data?.registrations || [];
+    const freeMine = mineLife.find((r) => r.event_id === evFree);
+    check('my registrations expose status + payment_status',
+      freeMine?.status === 'active' && freeMine?.payment_status === 'not_required', JSON.stringify(freeMine));
+    check('my registrations expose can_cancel', freeMine?.can_cancel === true, JSON.stringify(freeMine?.can_cancel));
   } finally {
     section('Cleanup (own fixtures only)');
     try {
