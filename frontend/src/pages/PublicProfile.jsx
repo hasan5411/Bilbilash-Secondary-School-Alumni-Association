@@ -24,6 +24,17 @@ export default function PublicProfile() {
   if (error) return <Alert kind="error">{error}</Alert>;
   if (!profile) return <Alert kind="error">Member not found.</Alert>;
 
+  // Students show their education (university, else college) instead of the
+  // workplace "Institute"; everyone else keeps the current Institute line.
+  const isStudent = (profile.profession || '').trim().toLowerCase() === 'student';
+  const university = (profile.university || '').trim();
+  const college = (profile.college || '').trim();
+  const institute = (profile.institute || '').trim();
+  const showUniversity = isStudent && !!university;
+  const showCollege = isStudent && !university && !!college;
+  const educationLabel = showUniversity ? 'University' : showCollege ? 'College' : 'Institute';
+  const educationValue = showUniversity ? university : showCollege ? college : (institute || '—');
+
   return (
     <div className="mx-auto max-w-2xl">
       <Card>
@@ -43,7 +54,7 @@ export default function PublicProfile() {
         <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
           <div><dt className="text-ink-soft">SSC batch</dt><dd className="font-semibold">{profile.ssc_batch ?? '—'}</dd></div>
           <div><dt className="text-ink-soft">Profession</dt><dd className="font-semibold">{profile.profession ?? '—'}</dd></div>
-          <div><dt className="text-ink-soft">Institute</dt><dd className="font-semibold">{profile.institute ?? '—'}</dd></div>
+          <div><dt className="text-ink-soft">{educationLabel}</dt><dd className="font-semibold">{educationValue}</dd></div>
           <div><dt className="text-ink-soft">Blood group</dt><dd className="font-semibold">{profile.blood_group ?? '—'}</dd></div>
           <div><dt className="text-ink-soft">Phone</dt><dd className="font-semibold">{profile.phone ?? 'Not provided'}</dd></div>
           <div><dt className="text-ink-soft">Present address</dt><dd className="font-semibold">{profile.present_address ?? 'Not provided'}</dd></div>

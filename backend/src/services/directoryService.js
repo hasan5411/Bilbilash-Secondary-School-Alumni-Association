@@ -1,8 +1,9 @@
 import { query } from '../db/pool.js';
 
 /**
- * Public directory: approved + active alumni only (any role), public fields only
- * (name, batch, profession, institute, blood group). Phone/address/email excluded.
+ * Public directory: approved + active alumni only (any role), public fields only.
+ * Address is searchable (present address only) but never returned, so members
+ * can be found by area without exposing where anyone lives.
  */
 export async function searchDirectory(filters = {}) {
   // Approved + active accounts are alumni regardless of role — MEMBER, ADMIN and AUTHORITY all appear.
@@ -23,8 +24,14 @@ export async function searchDirectory(filters = {}) {
     params.push(`%${filters.profession}%`);
   }
   if (filters.institute) {
-    where.push('p.institute LIKE ?');
-    params.push(`%${filters.institute}%`);
+    // One box covers current employer/institute, college and university.
+    where.push('(p.institute LIKE ? OR p.college LIKE ? OR p.university LIKE ?)');
+    const like = `%${filters.institute}%`;
+    params.push(like, like, like);
+  }
+  if (filters.address) {
+    where.push('p.present_address LIKE ?');
+    params.push(`%${filters.address}%`);
   }
   if (filters.blood_group) {
     where.push('p.blood_group = ?');
@@ -51,7 +58,9 @@ export async function getPublicProfile(userId) {
   const { queryOne } = await import('../db/pool.js');
   const row = await queryOne(
     `SELECT u.user_id, u.first_name, u.last_name, u.created_at, u.phone,
-            p.ssc_batch, p.blood_group, p.active_donor, p.profession, p.institute, p.bio, p.present_address, p.permanent_address, p.facebook_url, p.profile_photo
+            p.ssc_batch, p.blood_group, p.active_donor, p.profession, p.institute,
+            p.college, p.university,
+            p.bio, p.present_address, p.permanent_address, p.facebook_url, p.profile_photo
        FROM users u
        JOIN roles r ON r.role_id = u.role_id
        LEFT JOIN profiles p ON p.user_id = u.user_id

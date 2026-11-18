@@ -25,6 +25,9 @@
  *     NOT an input of the update form).
  *   - contribution_start_month: set by admins, not by the member's profile form.
  *   - address: deprecated column, superseded by present_address/permanent_address.
+ *   - college, university: added to the form on 2026-11-18 as optional education
+ *     details. Excluded so every existing member's percentage stays stable and
+ *     nobody is penalised for not listing them.
  *
  * A field counts as completed only when its saved value is meaningfully
  * provided (null / undefined / '' / whitespace-only ⇒ incomplete) and still

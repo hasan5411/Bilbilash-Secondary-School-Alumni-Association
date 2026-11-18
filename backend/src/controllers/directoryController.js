@@ -2,7 +2,9 @@ import { searchDirectory, getPublicProfile } from '../services/directoryService.
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { parsePositiveId } from '../utils/validate.js';
 
-/** GET /api/directory?name=&batch=&profession=&institute=&blood_group= — public. */
+/** GET /api/directory?name=&batch=&profession=&institute=&address=&blood_group= — public.
+ *  `institute` matches company/institute, college or university; `address` matches
+ *  the present address only (never returned in results). */
 export const search = asyncHandler(async (req, res) => {
   const results = await searchDirectory(req.query);
   res.json({ success: true, data: { results } });

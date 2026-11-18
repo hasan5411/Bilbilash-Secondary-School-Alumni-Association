@@ -6,7 +6,7 @@ import { computeProfileCompletion } from '../utils/profileCompletion.js';
 const OWN_SELECT = `
   SELECT u.user_id, u.first_name, u.last_name, u.email, u.phone, u.status, u.created_at,
          u.registration_number,
-         r.role_name AS role, p.ssc_batch, p.blood_group, p.active_donor, p.profession, p.institute, p.present_address, p.permanent_address, p.bio, p.facebook_url, p.profile_photo
+         r.role_name AS role, p.ssc_batch, p.blood_group, p.active_donor, p.profession, p.institute, p.college, p.university, p.present_address, p.permanent_address, p.bio, p.facebook_url, p.profile_photo
     FROM users u
     JOIN roles r ON r.role_id = u.role_id
     LEFT JOIN profiles p ON p.user_id = u.user_id`;
@@ -37,15 +37,15 @@ export async function updateOwnProfile(userId, data, photoFilename = undefined) 
     const [[p]] = await conn.query(`SELECT profile_id FROM profiles WHERE user_id = ? LIMIT 1`, [userId]);
     if (!p) {
       await conn.query(
-        `INSERT INTO profiles (user_id, ssc_batch, blood_group, active_donor, profession, institute, present_address, permanent_address, bio, facebook_url, profile_photo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [userId, data.ssc_batch ?? null, data.blood_group ?? null, data.active_donor ? 1 : 0, data.profession || null, data.institute || null, data.present_address || null, data.permanent_address || null, data.bio || null, data.facebook_url || null, photoFilename ?? null]
+        `INSERT INTO profiles (user_id, ssc_batch, blood_group, active_donor, profession, institute, college, university, present_address, permanent_address, bio, facebook_url, profile_photo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, data.ssc_batch ?? null, data.blood_group ?? null, data.active_donor ? 1 : 0, data.profession || null, data.institute || null, data.college || null, data.university || null, data.present_address || null, data.permanent_address || null, data.bio || null, data.facebook_url || null, photoFilename ?? null]
       );
     } else {
       await conn.query(
-        `UPDATE profiles SET ssc_batch = ?, blood_group = ?, active_donor = ?, profession = ?, institute = ?, present_address = ?, permanent_address = ?, bio = ?, facebook_url = ?
+        `UPDATE profiles SET ssc_batch = ?, blood_group = ?, active_donor = ?, profession = ?, institute = ?, college = ?, university = ?, present_address = ?, permanent_address = ?, bio = ?, facebook_url = ?
            WHERE user_id = ?`,
-        [data.ssc_batch ?? null, data.blood_group ?? null, data.active_donor ? 1 : 0, data.profession || null, data.institute || null, data.present_address || null, data.permanent_address || null, data.bio || null, data.facebook_url || null, userId]
+        [data.ssc_batch ?? null, data.blood_group ?? null, data.active_donor ? 1 : 0, data.profession || null, data.institute || null, data.college || null, data.university || null, data.present_address || null, data.permanent_address || null, data.bio || null, data.facebook_url || null, userId]
       );
       if (photoFilename !== undefined) {
         await conn.query(`UPDATE profiles SET profile_photo = ? WHERE user_id = ?`, [photoFilename, userId]);

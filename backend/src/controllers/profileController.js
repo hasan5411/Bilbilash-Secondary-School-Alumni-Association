@@ -23,6 +23,8 @@ export const updateProfile = [
       blood_group: { type: 'enum', values: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] },
       profession: { type: 'string', max: 120 },
       institute: { type: 'string', max: 120 },
+      college: { type: 'string', max: 120 },
+      university: { type: 'string', max: 120 },
       present_address: { type: 'string', required: true, max: 255 },
       permanent_address: { type: 'string', required: true, max: 255 },
       bio: { type: 'string', max: 500 },

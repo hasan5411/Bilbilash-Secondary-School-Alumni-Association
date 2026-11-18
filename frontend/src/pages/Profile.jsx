@@ -234,7 +234,8 @@ export default function Profile() {
           phone: r.data.profile.phone || '', registration_number: r.data.profile.registration_number || '',
           ssc_batch: r.data.profile.ssc_batch || '',
           blood_group: r.data.profile.blood_group || '', active_donor: r.data.profile.active_donor ? 'yes' : 'no', profession: r.data.profile.profession || '',
-          institute: r.data.profile.institute || '', present_address: r.data.profile.present_address || '',
+          institute: r.data.profile.institute || '', college: r.data.profile.college || '',
+          university: r.data.profile.university || '', present_address: r.data.profile.present_address || '',
           permanent_address: r.data.profile.permanent_address || '', bio: r.data.profile.bio || '',
           facebook_url: r.data.profile.facebook_url || '',
         });
@@ -303,7 +304,9 @@ export default function Profile() {
             <option value="yes">Yes</option>
           </Select>
           <Input label="Profession" value={form.profession} onChange={set('profession')} />
-          <Input label="Institute" value={form.institute} onChange={set('institute')} />
+          <Input label="Institute / Company" value={form.institute} onChange={set('institute')} />
+          <Input label="College / Polytechnic Institute" value={form.college} onChange={set('college')} />
+          <Input label="University" value={form.university} onChange={set('university')} />
           <Input label="Present Address *" placeholder="Your current residential address" required maxLength={255} value={form.present_address} onChange={set('present_address')} />
           <Input label="Permanent Address *" placeholder="Your permanent/home address" required maxLength={255} value={form.permanent_address} onChange={set('permanent_address')} />
           <div className="sm:col-span-2"><Textarea label="Bio" value={form.bio} onChange={set('bio')} /></div>

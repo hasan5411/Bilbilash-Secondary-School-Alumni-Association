@@ -26,6 +26,7 @@
     "migrate:payment-methods": "node src/db/migratePaymentMethods.js",
     "migrate:event-lifecycle": "node src/db/migrateEventLifecycle.js",
     "migrate:tshirt": "node src/db/migrateTshirtManagement.js",
+    "migrate:profile-education": "node src/db/migrateProfileEducation.js",
     "event-lifecycle-test": "node tests/eventLifecycleTest.js",
     "tshirt-test": "node tests/tshirtManagementTest.js",
     "storage:verify": "node src/db/verifyStorageAccess.js",

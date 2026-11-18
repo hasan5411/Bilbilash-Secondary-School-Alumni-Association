@@ -5,7 +5,7 @@ import { api } from '../api/client.js';
 import { Card, Input, Select, Button, Spinner, Alert, EmptyState, PageHeader, BLOOD_GROUPS } from '../components/ui.jsx';
 
 export default function Directory() {
-  const [form, setForm] = useState({ name: '', batch: '', profession: '', institute: '', blood_group: '' });
+  const [form, setForm] = useState({ name: '', batch: '', profession: '', institute: '', address: '', blood_group: '' });
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -37,7 +37,18 @@ export default function Directory() {
             {BLOOD_GROUPS.map((b) => <option key={b}>{b}</option>)}
           </Select>
           <Input label="Profession" value={form.profession} onChange={set('profession')} placeholder="e.g. Engineer" />
-          <Input label="Institute" value={form.institute} onChange={set('institute')} placeholder="e.g. BUET" />
+          <Input
+            label="Institute / Company / College / University"
+            value={form.institute}
+            onChange={set('institute')}
+            placeholder="e.g. BUET, Unilever"
+          />
+          <Input
+            label="Address (present)"
+            value={form.address}
+            onChange={set('address')}
+            placeholder="e.g. Dhanmondi, Dhaka"
+          />
           <div className="flex items-end"><Button type="submit" disabled={loading} className="w-full">{loading ? 'Searching…' : 'Search'}</Button></div>
         </form>
       </Card>

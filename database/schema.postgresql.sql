@@ -78,7 +78,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   ssc_batch     INTEGER NULL,
   blood_group   TEXT NULL,
   profession    VARCHAR(120) NULL,
-  institute     VARCHAR(120) NULL,
+  institute     VARCHAR(120) NULL, -- current company / institute
+  college       VARCHAR(120) NULL, -- college / polytechnic institute
+  university    VARCHAR(120) NULL,
   address       VARCHAR(255) NULL, -- deprecated: superseded by present_address/permanent_address
   present_address VARCHAR(255) NULL,
   permanent_address VARCHAR(255) NULL,
