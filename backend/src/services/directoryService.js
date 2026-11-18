@@ -40,7 +40,8 @@ export async function searchDirectory(filters = {}) {
 
   const rows = await query(
     `SELECT u.user_id, u.first_name, u.last_name,
-            p.ssc_batch, p.blood_group, p.active_donor, p.profession, p.institute, p.profile_photo
+            p.ssc_batch, p.blood_group, p.active_donor, p.profession, p.institute,
+            p.college, p.university, p.profile_photo
        FROM users u
        JOIN roles r ON r.role_id = u.role_id
        LEFT JOIN profiles p ON p.user_id = u.user_id

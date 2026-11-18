@@ -4,6 +4,14 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { Card, Input, Select, Button, Spinner, Alert, EmptyState, PageHeader, BLOOD_GROUPS } from '../components/ui.jsx';
 
+const isStudent = (profession) => (profession || '').trim().toLowerCase() === 'student';
+
+/** Students show their education (university, else college); everyone shows institute. */
+function affiliation(m) {
+  if (!isStudent(m.profession)) return (m.institute || '').trim();
+  return (m.university || '').trim() || (m.college || '').trim() || (m.institute || '').trim();
+}
+
 export default function Directory() {
   const [form, setForm] = useState({ name: '', batch: '', profession: '', institute: '', address: '', blood_group: '' });
   const [results, setResults] = useState(null);
@@ -60,7 +68,9 @@ export default function Directory() {
           ? <EmptyState title="No alumni matched your search." hint="Try fewer filters." />
           : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((m) => (
+              {results.map((m) => {
+                const detail = affiliation(m);
+                return (
                 <Link key={m.user_id} to={`/directory/${m.user_id}`}>
                   <Card className="h-full transition hover:shadow-md">
                     <div className="flex items-center gap-3">
@@ -76,10 +86,11 @@ export default function Directory() {
                         </div>
                       )}
                     </div>
-                    <p className="mt-3 text-sm text-ink-soft">{m.profession || 'Profession not set'}{m.institute ? ` · ${m.institute}` : ''}</p>
+                    <p className="mt-3 text-sm text-ink-soft">{m.profession || 'Profession not set'}{detail ? ` · ${detail}` : ''}</p>
                   </Card>
                 </Link>
-              ))}
+                );
+              })}
             </div>
           )
       )}
