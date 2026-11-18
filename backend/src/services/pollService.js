@@ -93,10 +93,12 @@ export async function listPollVoters(pollId) {
 
   const voters = await query(
     `SELECT v.user_id, v.option_id, v.created_at,
-            u.first_name, u.last_name,
+            u.first_name, u.last_name, u.email, u.registration_number,
+            p.ssc_batch,
             o.option_text
        FROM poll_votes v
        JOIN users u ON u.user_id = v.user_id
+       LEFT JOIN profiles p ON p.user_id = u.user_id
        JOIN poll_options o ON o.option_id = v.option_id
       WHERE v.poll_id = ?
       ORDER BY o.position, o.option_id, v.created_at`,

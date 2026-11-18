@@ -97,6 +97,8 @@ export default function PollsManage() {
                           <thead>
                             <tr className="border-b border-line text-xs uppercase tracking-wide text-ink-soft">
                               <th className="py-2 pr-3">Member</th>
+                              <th className="py-2 pr-3">SSC batch</th>
+                              <th className="py-2 pr-3">Email</th>
                               <th className="py-2 pr-3">Vote</th>
                               <th className="py-2">Voted at</th>
                             </tr>
@@ -105,8 +107,13 @@ export default function PollsManage() {
                             {v.data.voters.map((row) => (
                               <tr key={row.user_id} className="border-b border-line/60 last:border-0">
                                 <td className="py-2 pr-3">
-                                  {`${row.first_name || ''} ${row.last_name || ''}`.trim() || `Member #${row.user_id}`}
+                                  <div>{`${row.first_name || ''} ${row.last_name || ''}`.trim() || `Member #${row.user_id}`}</div>
+                                  {row.registration_number && (
+                                    <div className="text-xs text-ink-soft">Reg: {row.registration_number}</div>
+                                  )}
                                 </td>
+                                <td className="py-2 pr-3">{row.ssc_batch ?? '—'}</td>
+                                <td className="py-2 pr-3 text-ink-soft">{row.email || '—'}</td>
                                 <td className="py-2 pr-3">{row.option_text}</td>
                                 <td className="py-2 text-ink-soft">{fmtDateTime(row.created_at)}</td>
                               </tr>
