@@ -76,6 +76,36 @@ export async function closePoll(user, pollId) {
   return { poll_id: pollId, status: 'closed' };
 }
 
+/** ADMIN/AUTHORITY: the members who voted, with their chosen option and time. */
+export async function listPollVoters(pollId) {
+  const poll = await queryOne(
+    `SELECT poll_id, question, status, created_at FROM polls WHERE poll_id = ? LIMIT 1`,
+    [pollId]
+  );
+  if (!poll) throw notFound('Poll not found');
+
+  const options = await query(
+    `SELECT o.option_id, o.option_text,
+            (SELECT COUNT(*) FROM poll_votes v WHERE v.option_id = o.option_id) AS votes
+       FROM poll_options o WHERE o.poll_id = ? ORDER BY o.position, o.option_id`,
+    [pollId]
+  );
+
+  const voters = await query(
+    `SELECT v.user_id, v.option_id, v.created_at,
+            u.first_name, u.last_name,
+            o.option_text
+       FROM poll_votes v
+       JOIN users u ON u.user_id = v.user_id
+       JOIN poll_options o ON o.option_id = v.option_id
+      WHERE v.poll_id = ?
+      ORDER BY o.position, o.option_id, v.created_at`,
+    [pollId]
+  );
+
+  return { ...poll, options, voters, total: voters.length };
+}
+
 /** Vote once per poll per user — enforced by UNIQUE(poll_id, user_id) at DB level. */
 export async function votePoll(user, pollId, optionId) {
   const poll = await queryOne(`SELECT status FROM polls WHERE poll_id = ? LIMIT 1`, [pollId]);

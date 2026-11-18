@@ -1,4 +1,4 @@
-import { listPolls, createPoll, closePoll, deletePoll, votePoll } from '../services/pollService.js';
+import { listPolls, createPoll, closePoll, deletePoll, votePoll, listPollVoters } from '../services/pollService.js';
 import { audit } from '../services/statsService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { validate, parsePositiveId } from '../utils/validate.js';
@@ -29,6 +29,12 @@ export const remove = asyncHandler(async (req, res) => {
   const result = await deletePoll(id);
   audit(req.user.user_id, 'DELETE_POLL', 'polls', id, { by_role: req.user.role_name });
   res.json({ success: true, message: 'Poll deleted', data: result });
+});
+
+export const voters = asyncHandler(async (req, res) => {
+  const id = parsePositiveId(req.params.id, 'poll id');
+  const result = await listPollVoters(id);
+  res.json({ success: true, data: result });
 });
 
 export const vote = asyncHandler(async (req, res) => {

@@ -95,20 +95,31 @@ export default function EventsManage() {
   };
 
   const remove = async (ev) => {
-    if (!window.confirm(`Delete event "${ev.title}"? This is only possible when it has no registration or payment history.`)) return;
+    if (!window.confirm(
+      `Delete event "${ev.title}"?\n\nDeleting is only allowed while no payment has been received. `
+      + 'Unpaid registrations and unpaid payment claims for this event are removed too. This cannot be undone.'
+    )) return;
     setMsg(null);
     try { const res = await api.del(`/api/events/${ev.event_id}`); setMsg({ kind: 'success', text: res.message }); load(); }
     catch (e) { setMsg({ kind: 'error', text: e.message }); }
   };
 
-  // ── Fee + eligibility editing (fee changes affect NEW registrations only) ──
-  const [editing, setEditing] = useState(null); // { event_id, registration_fee, eligible_batches }
+  // ── Full event editing (fee/batch changes affect NEW registrations only) ──
+  const [editing, setEditing] = useState(null);
   const startEdit = (ev) => setEditing({
     event_id: ev.event_id,
+    title: ev.title || '',
+    description: ev.description || '',
+    location: ev.location || '',
+    event_date: ev.event_date ? String(ev.event_date).slice(0, 10) : '',
+    start_time: ev.start_time ? String(ev.start_time).slice(0, 5) : '',
+    end_time: ev.end_time ? String(ev.end_time).slice(0, 5) : '',
+    capacity: ev.capacity ?? 1,
     registration_fee: ev.registration_fee == null ? '' : String(ev.registration_fee),
     eligible_batches: Array.isArray(ev.eligible_batches) ? ev.eligible_batches.join(', ') : '',
     tshirt_included: ev.tshirt_included ? 'yes' : 'no',
   });
+  const setEdit = (k) => (e) => setEditing({ ...editing, [k]: e.target.value });
   const saveEdit = async (ev) => {
     setBusy(true); setMsg(null);
     try {
@@ -124,15 +135,18 @@ export default function EventsManage() {
           : 'Members will no longer be able to choose a size.';
         if (!window.confirm(`Disable T-shirts for "${ev.title}"? ${note} Continue?`)) return;
       }
+      if (!editing.title.trim()) throw new Error('Title is required.');
+      if (!editing.event_date) throw new Error('Event date is required.');
+      if (!(Number(editing.capacity) >= 1)) throw new Error('Capacity must be at least 1.');
       const batches = parseBatches(editing.eligible_batches);
       const res = await api.put(`/api/events/${ev.event_id}`, {
-        title: ev.title,
-        description: ev.description || undefined,
-        location: ev.location || undefined,
-        event_date: day(ev.event_date),
-        start_time: ev.start_time || undefined,
-        end_time: ev.end_time || undefined,
-        capacity: Number(ev.capacity),
+        title: editing.title.trim(),
+        description: editing.description || undefined,
+        location: editing.location || undefined,
+        event_date: editing.event_date,
+        start_time: editing.start_time || undefined,
+        end_time: editing.end_time || undefined,
+        capacity: Number(editing.capacity),
         status: ev.status,
         registration_fee: editing.registration_fee === '' ? undefined : Number(editing.registration_fee),
         eligible_batches: batches.length ? batches : undefined,
@@ -291,7 +305,7 @@ export default function EventsManage() {
                   </Button>
                 )}
                 <Button variant="outline" className="!px-2 !py-1 text-xs" onClick={() => (editing?.event_id === ev.event_id ? setEditing(null) : startEdit(ev))}>
-                  {editing?.event_id === ev.event_id ? 'Close editor' : 'Edit fee & eligibility'}
+                  {editing?.event_id === ev.event_id ? 'Close editor' : 'Edit event'}
                 </Button>
                 {ev.status === 'published' && <Button variant="danger" className="!px-2 !py-1 text-xs" onClick={() => cancel(ev.event_id)}>Cancel event</Button>}
                 {!ev.archived_at && <Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={() => archive(ev)}>Archive</Button>}
@@ -301,28 +315,39 @@ export default function EventsManage() {
 
             {editing?.event_id === ev.event_id && (
               <div className="mt-3 grid gap-3 rounded-lg border border-line bg-ice p-3 sm:grid-cols-3">
+                <Input label="Title *" required value={editing.title} onChange={setEdit('title')} />
+                <Input label="Date *" type="date" required value={editing.event_date} onChange={setEdit('event_date')} />
+                <Input label="Capacity *" type="number" min="1" required value={editing.capacity} onChange={setEdit('capacity')} />
+                <Input label="Start time" type="time" value={editing.start_time} onChange={setEdit('start_time')} />
+                <Input label="End time" type="time" value={editing.end_time} onChange={setEdit('end_time')} />
+                <Input label="Location" value={editing.location} onChange={setEdit('location')} />
                 <Input
                   label="Registration fee (৳) — empty = free"
                   type="number" min="1" step="0.01"
                   value={editing.registration_fee}
-                  onChange={(e) => setEditing({ ...editing, registration_fee: e.target.value })}
+                  onChange={setEdit('registration_fee')}
                 />
+                <Select label="T-shirt Included?" value={editing.tshirt_included} onChange={setEdit('tshirt_included')}>
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </Select>
                 <div className="sm:col-span-2">
                   <Input
                     label="Eligible SSC batches — empty = all"
                     placeholder="e.g. 2005, 2010"
                     value={editing.eligible_batches}
-                    onChange={(e) => setEditing({ ...editing, eligible_batches: e.target.value })}
+                    onChange={setEdit('eligible_batches')}
                   />
                 </div>
-                <Select
-                  label="T-shirt Included?"
-                  value={editing.tshirt_included}
-                  onChange={(e) => setEditing({ ...editing, tshirt_included: e.target.value })}
-                >
-                  <option value="no">No</option>
-                  <option value="yes">Yes</option>
-                </Select>
+                <div className="sm:col-span-3">
+                  <Textarea
+                    label="Description"
+                    rows={8}
+                    className="min-h-52 resize-y leading-relaxed"
+                    value={editing.description}
+                    onChange={setEdit('description')}
+                  />
+                </div>
                 <p className="text-xs text-ink-soft sm:col-span-3">
                   Fee and eligibility changes apply to new registrations only — existing registrations keep their snapshot.
                   Disabling T-shirts keeps every saved size stored.

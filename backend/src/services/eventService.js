@@ -233,31 +233,64 @@ export async function createEvent(user, data) {
 }
 
 /**
- * ADMIN/AUTHORITY: hard-delete ONLY an event without any lifecycle history.
- * An event with registrations or payment records must be cancelled/archived
- * instead so history is never destroyed.
+ * ADMIN/AUTHORITY: hard-delete an event that never received money.
+ * Deleting is BLOCKED as soon as any payment was approved/refunded or any
+ * registration is marked paid — that history must survive via cancel/archive.
+ * Otherwise (free events, no registrations, or registrations that are still
+ * unpaid) the event and its unpaid rows are removed together; leaving pending
+ * claims behind would orphan them against a non-existent event.
  */
 export async function deleteEvent(eventId) {
   const row = await queryOne(`SELECT event_id, title, image FROM events WHERE event_id = ? LIMIT 1`, [eventId]);
   if (!row) throw notFound('Event not found');
   const counts = await queryOne(
     `SELECT
-       (SELECT COUNT(*) FROM event_registrations WHERE event_id = ?) AS registrations,
-       (SELECT COUNT(*) FROM payments WHERE event_id = ?
-          OR registration_id IN (SELECT registration_id FROM event_registrations WHERE event_id = ?)) AS payments`,
+       (SELECT COUNT(*) FROM event_registrations er
+         WHERE er.event_id = ? AND er.payment_status = 'paid') AS paid_registrations,
+       (SELECT COUNT(*) FROM payments p
+         WHERE p.status IN ('success','refunded')
+           AND (p.event_id = ? OR p.registration_id IN
+                (SELECT registration_id FROM event_registrations WHERE event_id = ?))) AS settled_payments`,
     [eventId, eventId, eventId]
   );
-  if (Number(counts.registrations) > 0 || Number(counts.payments) > 0) {
-    throw conflict('This event has registration or payment history and cannot be deleted. Cancel or archive it instead.');
+  if (Number(counts.paid_registrations) > 0 || Number(counts.settled_payments) > 0) {
+    throw conflict('This event has received payment and cannot be deleted. Cancel or archive it instead so the payment and registration history stays intact.');
   }
-  await query(`DELETE FROM events WHERE event_id = ?`, [eventId]);
+
+  // Unpaid payment claims (pending/failed/cancelled/rejected) belong to this
+  // event; keep their screenshot names so the files can be removed afterwards.
+  const openPayments = await query(
+    `SELECT p.payment_id, p.screenshot_path FROM payments p
+      WHERE p.status NOT IN ('success','refunded')
+        AND (p.event_id = ? OR p.registration_id IN
+             (SELECT registration_id FROM event_registrations WHERE event_id = ?))`,
+    [eventId, eventId]
+  );
+
+  await withTransaction(async (conn) => {
+    if (openPayments.length) {
+      await conn.query(
+        `DELETE FROM payments
+          WHERE status NOT IN ('success','refunded')
+            AND (event_id = ? OR registration_id IN
+                 (SELECT registration_id FROM event_registrations WHERE event_id = ?))`,
+        [eventId, eventId]
+      );
+    }
+    await conn.query(`DELETE FROM events WHERE event_id = ?`, [eventId]);
+  });
+
   try {
     await query(`DELETE FROM notifications WHERE related_entity_type = 'event' AND related_entity_id = ?`, [eventId]);
   } catch { /* best-effort */ }
   if (row.image) {
     try { fs.unlinkSync(path.join(uploadDir, row.image)); } catch { /* file may already be gone */ }
   }
-  return { event_id: eventId, deleted: true };
+  for (const p of openPayments) {
+    if (!p.screenshot_path) continue;
+    try { fs.unlinkSync(path.join(uploadDir, p.screenshot_path)); } catch { /* file may already be gone */ }
+  }
+  return { event_id: eventId, deleted: true, removed_unpaid_payments: openPayments.length };
 }
 
 export async function updateEvent(user, eventId, data) {
