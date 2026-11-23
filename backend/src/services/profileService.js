@@ -31,8 +31,11 @@ export async function getOwnProfile(userId) {
 export async function updateOwnProfile(userId, data, photoFilename = undefined) {
   return withTransaction(async (conn) => {
     await conn.query(
-      `UPDATE users SET first_name = ?, last_name = ?, phone = ?, registration_number = ? WHERE user_id = ?`,
-      [data.first_name, data.last_name, data.phone || null, data.registration_number, userId]
+      // registration_number is no longer collected by the forms. When the
+      // client omits it, COALESCE keeps the stored value — legacy data is
+      // never wiped by a routine profile save.
+      `UPDATE users SET first_name = ?, last_name = ?, phone = ?, registration_number = COALESCE(?, registration_number) WHERE user_id = ?`,
+      [data.first_name, data.last_name, data.phone || null, data.registration_number || null, userId]
     );
     const [[p]] = await conn.query(`SELECT profile_id FROM profiles WHERE user_id = ? LIMIT 1`, [userId]);
     if (!p) {

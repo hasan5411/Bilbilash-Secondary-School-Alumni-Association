@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { lookup, monthlyStatus, create, mine, listAll, memberSummary, providers, submitManual, review } from '../controllers/paymentController.js';
+import { me, monthlyStatus, create, mine, listAll, memberSummary, providers, submitManual, review } from '../controllers/paymentController.js';
 import { authenticate, requireApproved, requireRole } from '../middleware/auth.js';
 import { uploadImageMiddleware } from '../middleware/upload.js';
 
@@ -10,7 +10,8 @@ router.use(authenticate, requireRole('ANY'));
 // Member-facing financial surfaces require APPROVED status (same policy as
 // /api/contributions/*): pending/visitor accounts must not record payments or
 // read due/payment data — authorization is enforced here in the backend.
-router.get('/lookup/:regNumber', requireApproved, lookup);
+// Payer identity always comes from the token (no registration-number lookup).
+router.get('/me', requireApproved, me);
 router.get('/monthly-status', requireApproved, monthlyStatus);
 router.get('/mine', requireApproved, mine);
 router.get('/providers', requireApproved, providers);

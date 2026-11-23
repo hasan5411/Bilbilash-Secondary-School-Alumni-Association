@@ -4,7 +4,7 @@
  * Usage:  cd backend && npm run profile-test     (backend must be running on :5000)
  *
  * The completion denominator is EXACTLY the Profile Update form's inputs
- * (14 fields — see src/utils/profileCompletion.js).
+ * (13 fields — see src/utils/profileCompletion.js).
  *
  * Sections:
  *   1. Unit — calculation formula, rounding, empty/whitespace/null/invalid
@@ -115,7 +115,7 @@ async function cleanupFixture() {
 /* Section 1 — unit: calculation                                       */
 /* ------------------------------------------------------------------ */
 function unitCalculation() {
-  console.log('\n[1] Unit — completion calculation (14 profile-form fields)');
+  console.log('\n[1] Unit — completion calculation (13 profile-form fields)');
 
   const FULL = {
     first_name: 'Ayesha', last_name: 'Khan', phone: '01712345678',
@@ -126,10 +126,10 @@ function unitCalculation() {
     profile_photo: '169.png',
   };
 
-  check('completion configuration = the 14 profile-update-form fields',
-    COMPLETION_FIELDS.join(',') === 'first_name,last_name,phone,registration_number,ssc_batch,blood_group,active_donor,profession,institute,present_address,permanent_address,bio,facebook_url,profile_photo',
+  check('completion configuration = the 13 profile-update-form fields',
+    COMPLETION_FIELDS.join(',') === 'first_name,last_name,phone,ssc_batch,blood_group,active_donor,profession,institute,present_address,permanent_address,bio,facebook_url,profile_photo',
     COMPLETION_FIELDS.join(','));
-  check('configuration has exactly 14 fields', COMPLETION_FIELDS.length === 14, String(COMPLETION_FIELDS.length));
+  check('configuration has exactly 13 fields', COMPLETION_FIELDS.length === 13, String(COMPLETION_FIELDS.length));
 
   check('no completed fields → 0%', computeProfileCompletion({}) === 0, String(computeProfileCompletion({})));
   check('all values null → 0%', computeProfileCompletion(Object.fromEntries(COMPLETION_FIELDS.map((f) => [f, null]))) === 0);
@@ -140,64 +140,64 @@ function unitCalculation() {
   // ── The reported bug scenario: phone / profession / institute / blood empty.
   const noContact = { ...FULL, phone: null, profession: '', institute: '   ', blood_group: null };
   const noContactPct = computeProfileCompletion(noContact);
-  check('phone + profession + institute + blood empty → NOT 100% (71%)',
-    noContactPct !== 100 && noContactPct === 71, String(noContactPct));
+  check('phone + profession + institute + blood empty → NOT 100% (69%)',
+    noContactPct !== 100 && noContactPct === 69, String(noContactPct));
 
   // Required-only + photo (no phone/ssc/blood/profession/institute/bio/fb/active_donor).
   const requiredOnly = {
-    first_name: 'A', last_name: 'B', registration_number: 'R',
+    first_name: 'A', last_name: 'B',
     present_address: 'P1', permanent_address: 'P2', profile_photo: 'x.png',
   };
-  check('registration-required + photo only → 43% (not 100%)',
-    computeProfileCompletion(requiredOnly) === 43, String(computeProfileCompletion(requiredOnly)));
+  check('name + addresses + photo only → 38% (not 100%)',
+    computeProfileCompletion(requiredOnly) === 38, String(computeProfileCompletion(requiredOnly)));
 
   const optionalOnly = {
     phone: '01712345678', ssc_batch: 2001, blood_group: 'A+', profession: 'Doctor',
     institute: 'Bilbilash', active_donor: 0,
   };
-  check('optional fields filled but required missing → 43% (not 100%)',
-    computeProfileCompletion(optionalOnly) === 43, String(computeProfileCompletion(optionalOnly)));
+  check('optional fields filled but required missing → 46% (not 100%)',
+    computeProfileCompletion(optionalOnly) === 46, String(computeProfileCompletion(optionalOnly)));
 
   check('auth/system fields alone → 0%', computeProfileCompletion({
     email: 'x@y.z', password_hash: '$2a$12$abc', token_version: 3, status: 'approved',
     user_id: 12, role: 'MEMBER', created_at: '2024-01-01',
   }) === 0);
 
-  check('saved active_donor=false counts as a filled form field (1/14 → 7%)',
-    computeProfileCompletion({ active_donor: 0 }) === 7, String(computeProfileCompletion({ active_donor: 0 })));
+  check('saved active_donor=false counts as a filled form field (1/13 → 8%)',
+    computeProfileCompletion({ active_donor: 0 }) === 8, String(computeProfileCompletion({ active_donor: 0 })));
   check('active_donor null does NOT count',
     computeProfileCompletion({ active_donor: null }) === 0);
 
   // Invalid values (violating existing validation rules) are incomplete.
-  check('first_name over 60 chars → invalid → 93%',
-    computeProfileCompletion({ ...FULL, first_name: 'x'.repeat(61) }) === 93);
-  check('blood_group outside enum → invalid → 93%',
-    computeProfileCompletion({ ...FULL, blood_group: 'A++' }) === 93);
-  check('ssc_batch out of range (1800) → invalid → 93%',
-    computeProfileCompletion({ ...FULL, ssc_batch: 1800 }) === 93);
-  check('ssc_batch non-integer → invalid → 93%',
-    computeProfileCompletion({ ...FULL, ssc_batch: 2001.5 }) === 93);
+  check('first_name over 60 chars → invalid → 92%',
+    computeProfileCompletion({ ...FULL, first_name: 'x'.repeat(61) }) === 92);
+  check('blood_group outside enum → invalid → 92%',
+    computeProfileCompletion({ ...FULL, blood_group: 'A++' }) === 92);
+  check('ssc_batch out of range (1800) → invalid → 92%',
+    computeProfileCompletion({ ...FULL, ssc_batch: 1800 }) === 92);
+  check('ssc_batch non-integer → invalid → 92%',
+    computeProfileCompletion({ ...FULL, ssc_batch: 2001.5 }) === 92);
   check('ssc_batch numeric string "2001" is valid → 100%',
     computeProfileCompletion({ ...FULL, ssc_batch: '2001' }) === 100);
-  check('facebook_url not a Facebook URL → invalid → 93%',
-    computeProfileCompletion({ ...FULL, facebook_url: 'https://example.com/x' }) === 93);
+  check('facebook_url not a Facebook URL → invalid → 92%',
+    computeProfileCompletion({ ...FULL, facebook_url: 'https://example.com/x' }) === 92);
   check('facebook_url valid (www.facebook.com) counts',
     computeProfileCompletion(FULL) === 100);
-  check('bio over 500 chars → invalid → 93%',
-    computeProfileCompletion({ ...FULL, bio: 'y'.repeat(501) }) === 93);
-  check('whitespace-only phone → incomplete → 93%',
-    computeProfileCompletion({ ...FULL, phone: '   ' }) === 93);
-  check('photo must be a saved reference (empty → 93%)',
-    computeProfileCompletion({ ...FULL, profile_photo: '' }) === 93);
-  check('photo whitespace-only → incomplete → 93%',
-    computeProfileCompletion({ ...FULL, profile_photo: '   ' }) === 93);
+  check('bio over 500 chars → invalid → 92%',
+    computeProfileCompletion({ ...FULL, bio: 'y'.repeat(501) }) === 92);
+  check('whitespace-only phone → incomplete → 92%',
+    computeProfileCompletion({ ...FULL, phone: '   ' }) === 92);
+  check('photo must be a saved reference (empty → 92%)',
+    computeProfileCompletion({ ...FULL, profile_photo: '' }) === 92);
+  check('photo whitespace-only → incomplete → 92%',
+    computeProfileCompletion({ ...FULL, profile_photo: '   ' }) === 92);
 
-  check('rounding: 1/14 → 7%', computeProfileCompletion({ first_name: 'A' }) === 7, String(computeProfileCompletion({ first_name: 'A' })));
-  check('rounding: 7/14 → 50%', computeProfileCompletion({
-    first_name: 'A', last_name: 'B', phone: '017', registration_number: 'R',
+  check('rounding: 1/13 → 8%', computeProfileCompletion({ first_name: 'A' }) === 8, String(computeProfileCompletion({ first_name: 'A' })));
+  check('rounding: 6/13 → 46%', computeProfileCompletion({
+    first_name: 'A', last_name: 'B', phone: '017',
     ssc_batch: 2001, blood_group: 'A+', active_donor: 1,
-  }) === 50, String(computeProfileCompletion({ first_name: 'A', last_name: 'B', phone: '017', registration_number: 'R', ssc_batch: 2001, blood_group: 'A+', active_donor: 1 })));
-  check('rounding: 13/14 → 93%', computeProfileCompletion({ ...FULL, profile_photo: null }) === 93);
+  }) === 46, String(computeProfileCompletion({ first_name: 'A', last_name: 'B', phone: '017', ssc_batch: 2001, blood_group: 'A+', active_donor: 1 })));
+  check('rounding: 12/13 → 92%', computeProfileCompletion({ ...FULL, profile_photo: null }) === 92);
 
   check('no fields configured → null (no div-by-zero, no misleading 100%)',
     computeProfileCompletion(FULL, []) === null, String(computeProfileCompletion(FULL, [])));
@@ -231,7 +231,8 @@ function baseForm() {
   const fd = new FormData();
   fd.append('first_name', 'Pct');
   fd.append('last_name', 'Member');
-  fd.append('registration_number', FIX_REG);
+  // The real form no longer collects registration_number — omitting it must
+  // preserve whatever the account already stored.
   fd.append('phone', '01700000000');
   fd.append('ssc_batch', '2001');
   fd.append('blood_group', 'B+');
@@ -300,21 +301,21 @@ async function liveApi() {
   check('login role is MEMBER', login.json?.data?.user?.role === 'MEMBER', String(login.json?.data?.user?.role));
   if (!token) { await cleanupFixture(); return; }
 
-  // --- GET after registration: 11 of 14 form fields ------------------
-  // filled: first, last, phone, reg, ssc, blood, profession, institute,
-  // addresses(2), active_donor(default false = filled) = 11
-  // empty:  bio, facebook_url, profile_photo → 11/14 = 79%
+  // --- GET after registration: 10 of 13 form fields ------------------
+  // filled: first, last, phone, ssc, blood, profession, institute,
+  // addresses(2), active_donor(default false = filled) = 10
+  // empty:  bio, facebook_url, profile_photo → 10/13 = 77%
   const g1 = await call('GET', '/api/profile', { token });
   const p1 = g1.json?.data?.profile;
   check('GET /api/profile → 200', g1.status === 200, `status ${g1.status}`);
-  check('fresh registration → 79% (11 of 14 form fields)', p1?.profile_completion === 79, String(p1?.profile_completion));
+  check('fresh registration → 77% (10 of 13 form fields)', p1?.profile_completion === 77, String(p1?.profile_completion));
   check('API value equals utility recomputation from the same saved row',
     computeProfileCompletion(p1) === p1?.profile_completion, String(computeProfileCompletion(p1)));
   check('profile GET exposes no credential fields',
     p1?.password_hash === undefined && p1?.token_version === undefined);
 
   const g2 = await call('GET', '/api/profile', { token });
-  check('reload returns the same value', g2.json?.data?.profile?.profile_completion === 79,
+  check('reload returns the same value', g2.json?.data?.profile?.profile_completion === 77,
     String(g2.json?.data?.profile?.profile_completion));
 
   // --- successful update: fill bio + facebook, spoof percentage ------
@@ -322,9 +323,11 @@ async function liveApi() {
   spoof.set('profile_completion', '100'); // client must NEVER be trusted
   const u1 = await call('PUT', '/api/profile', { token, form: spoof });
   check('successful profile update → 200', u1.status === 200, `status ${u1.status}: ${u1.json?.message || ''}`);
-  // 13/14 now filled — only profile_photo missing.
-  check('client-submitted percentage is ignored (server computes 93%)',
-    u1.json?.data?.profile?.profile_completion === 93, String(u1.json?.data?.profile?.profile_completion));
+  // 12/13 now filled — only profile_photo missing.
+  check('client-submitted percentage is ignored (server computes 92%)',
+    u1.json?.data?.profile?.profile_completion === 92, String(u1.json?.data?.profile?.profile_completion));
+  check('profile save without the removed field keeps the stored registration number',
+    u1.json?.data?.profile?.registration_number === FIX_REG, String(u1.json?.data?.profile?.registration_number));
   check('form values actually saved', u1.json?.data?.profile?.profession === 'Engineer'
     && u1.json?.data?.profile?.bio === 'Profile completion test bio'
     && u1.json?.data?.profile?.facebook_url === 'https://www.facebook.com/pcttest');
@@ -334,13 +337,13 @@ async function liveApi() {
   ws.set('present_address', '   ');
   const u2 = await call('PUT', '/api/profile', { token, form: ws });
   check('whitespace-only required field → 422', u2.status === 422, `status ${u2.status}`);
-  await expectStill(token, 93, 'failed update (whitespace) leaves percentage unchanged');
+  await expectStill(token, 92, 'failed update (whitespace) leaves percentage unchanged');
 
   const missing = baseForm();
   missing.delete('last_name');
   const u3 = await call('PUT', '/api/profile', { token, form: missing });
   check('missing required field → 422', u3.status === 422, `status ${u3.status}`);
-  await expectStill(token, 93, 'failed update (missing field) leaves percentage unchanged');
+  await expectStill(token, 92, 'failed update (missing field) leaves percentage unchanged');
 
   // --- photo upload → 14/14 = 100% ----------------------------------
   const withPhoto = baseForm();
@@ -349,7 +352,7 @@ async function liveApi() {
   check('profile photo upload → 200', u4.status === 200, `status ${u4.status}: ${u4.json?.message || ''}`);
   const photoName = u4.json?.data?.profile?.profile_photo;
   check('saved photo reference returned', typeof photoName === 'string' && photoName.endsWith('.png'), String(photoName));
-  check('all 14 form fields filled → 100%', u4.json?.data?.profile?.profile_completion === 100,
+  check('all 13 form fields filled → 100%', u4.json?.data?.profile?.profile_completion === 100,
     String(u4.json?.data?.profile?.profile_completion));
 
   const rows = await dbQuery(
@@ -395,8 +398,8 @@ async function liveApi() {
   const u6 = await call('PUT', '/api/profile', { token, form: hollow });
   check('emptying phone/blood/profession/institute → 200', u6.status === 200, `status ${u6.status}`);
   const hollowPct = u6.json?.data?.profile?.profile_completion;
-  check('…and completion drops to 71% — NOT 100%', hollowPct === 71 && hollowPct !== 100, String(hollowPct));
-  await expectStill(token, 71, 'reload confirms 71% after those fields emptied');
+  check('…and completion drops to 69% — NOT 100%', hollowPct === 69 && hollowPct !== 100, String(hollowPct));
+  await expectStill(token, 69, 'reload confirms 69% after those fields emptied');
 
   await cleanupFixture();
   if (photoName) {

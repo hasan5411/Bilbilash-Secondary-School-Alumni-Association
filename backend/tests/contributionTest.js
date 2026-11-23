@@ -308,8 +308,8 @@ async function integrationTests() {
     const notDuplicated = stillOne && (await hasSetupReminder()).length === 1;
     check('login reminder: second login does NOT create a duplicate reminder', notDuplicated, `count ${(await hasSetupReminder()).length}`);
 
-    const rBadAmount = await call('POST', '/api/contributions/mine/rate', { token: tokens.u6, body: { amount: 45 } });
-    check('setup: amount outside allowed set rejected (400)', rBadAmount.status === 400, `status ${rBadAmount.status}`);
+    const rBadAmount = await call('POST', '/api/contributions/mine/rate', { token: tokens.u6, body: { amount: 19 } });
+    check('setup: amount below ৳20 rejected (400)', rBadAmount.status === 400 && /at least ৳20/.test(rBadAmount.json?.message || ''), `status ${rBadAmount.status} ${rBadAmount.json?.message}`);
     const rPast = await call('POST', '/api/contributions/mine/rate', { token: tokens.u6, body: { amount: 20, effective_month: '2020-01' } });
     check('setup: retroactive effective month rejected (400)', rPast.status === 400, `status ${rPast.status} ${rPast.json?.message || ''}`);
 
@@ -342,7 +342,7 @@ async function integrationTests() {
 
     const pay100 = await call('POST', '/api/payments', {
       token: tokens.u1,
-      body: { registration_number: users.u1.registration_number, payment_type: 'monthly', amount: 50, months: [WINDOW[0], WINDOW[1]], sender_number: '01712345678' },
+      body: { payment_type: 'monthly', amount: 50, months: [WINDOW[0], WINDOW[1]], sender_number: '01712345678' },
     });
     check('test payment ৳50 x 2 months -> 201 success', pay100.status === 201 && pay100.json?.data?.payment?.status === 'success', `status ${pay100.status} ${pay100.json?.message || ''}`);
 
@@ -364,16 +364,16 @@ async function integrationTests() {
     check('ledger marks every window month paid', WINDOW.every((m) => mineU1b.json?.data?.months?.find((x) => x.month === m)?.status === 'paid'));
     check('up_to_date=true once start known, dues settled, no unpriced months', s1b.up_to_date === true);
 
-    const payAgain = await call('POST', '/api/payments', { token: tokens.u1, body: { registration_number: users.u1.registration_number, payment_type: 'monthly', amount: 20, months: [WINDOW[0]], sender_number: '01712345678' } });
+    const payAgain = await call('POST', '/api/payments', { token: tokens.u1, body: { payment_type: 'monthly', amount: 20, months: [WINDOW[0]], sender_number: '01712345678' } });
     check('already-paid month cannot be paid again (409)', payAgain.status === 409, `status ${payAgain.status}`);
-    const payPrevYear = await call('POST', '/api/payments', { token: tokens.u1, body: { registration_number: users.u1.registration_number, payment_type: 'monthly', amount: 20, months: [keyOf(Number(CUR.slice(0, 4)) - 1, 12)], sender_number: '01712345678' } });
+    const payPrevYear = await call('POST', '/api/payments', { token: tokens.u1, body: { payment_type: 'monthly', amount: 20, months: [keyOf(Number(CUR.slice(0, 4)) - 1, 12)], sender_number: '01712345678' } });
     check('calendar boundary: previous-year month rejected (400)', payPrevYear.status === 400, `status ${payPrevYear.status}`);
-    const payFuture = await call('POST', '/api/payments', { token: tokens.u1, body: { registration_number: users.u1.registration_number, payment_type: 'monthly', amount: 20, months: [shiftKey(CUR, 1)], sender_number: '01712345678' } });
+    const payFuture = await call('POST', '/api/payments', { token: tokens.u1, body: { payment_type: 'monthly', amount: 20, months: [shiftKey(CUR, 1)], sender_number: '01712345678' } });
     check('calendar boundary: future month rejected (400)', payFuture.status === 400, `status ${payFuture.status}`);
 
-    const payNone = await call('POST', '/api/payments', { token: tokens.u1, body: { registration_number: users.u1.registration_number, payment_type: 'monthly', amount: 20, months: [CUR], sender_number: '01712345678' } });
+    const payNone = await call('POST', '/api/payments', { token: tokens.u1, body: { payment_type: 'monthly', amount: 20, months: [CUR], sender_number: '01712345678' } });
     check('EXAMPLE 3: monthly payment with nothing outstanding is refused (409 already-settled, points to occasional)', payNone.status === 409, `status ${payNone.status}`);
-    const occ100 = await call('POST', '/api/payments', { token: tokens.u1, body: { registration_number: users.u1.registration_number, payment_type: 'occasional', purpose: 'donation', amount: 100, sender_number: '01812345678', description: 'Extra contribution' } });
+    const occ100 = await call('POST', '/api/payments', { token: tokens.u1, body: { payment_type: 'occasional', purpose: 'donation', amount: 100, sender_number: '01812345678', description: 'Extra contribution' } });
     check('EXAMPLE 3: ৳100 donation (extra contribution route) -> 201', occ100.status === 201 && occ100.json?.data?.payment?.status === 'success', `status ${occ100.status}`);
     const minePayU1 = await call('GET', '/api/payments/mine', { token: tokens.u1 });
     check('EXAMPLE 3: monthly_total=100 (original payment intact), occasional_total=100, extra_total=20',
@@ -386,9 +386,9 @@ async function integrationTests() {
     /* ================================================================ */
     section('T3) Partial settlement (older-first top-up of a half-paid month)');
     await insertRate(ids.u2, RATE, W0, ids.u2);
-    const p1 = await call('POST', '/api/payments', { token: tokens.u2, body: { registration_number: users.u2.registration_number, payment_type: 'monthly', amount: 20, months: [WINDOW[0]], sender_number: '01712345678' } });
+    const p1 = await call('POST', '/api/payments', { token: tokens.u2, body: { payment_type: 'monthly', amount: 20, months: [WINDOW[0]], sender_number: '01712345678' } });
     check('pay first month ৳20 -> 201', p1.status === 201, `status ${p1.status}`);
-    const p2 = await call('POST', '/api/payments', { token: tokens.u2, body: { registration_number: users.u2.registration_number, payment_type: 'monthly', amount: 30, months: [WINDOW[1]], sender_number: '01712345678' } });
+    const p2 = await call('POST', '/api/payments', { token: tokens.u2, body: { payment_type: 'monthly', amount: 30, months: [WINDOW[1]], sender_number: '01712345678' } });
     check('pay second month ৳30 -> 201', p2.status === 201, `status ${p2.status}`);
     const mineU2 = await call('GET', '/api/contributions/mine', { token: tokens.u2 });
     const rowsU2 = Object.fromEntries(mineU2.json?.data?.months?.map((m) => [m.month, m]) || []);
@@ -412,7 +412,6 @@ async function integrationTests() {
     await insertRate(ids.u3, RATE, W0, ids.u3);
     const fd = (prov, txn, { billing, amount, purpose } = {}) => {
       const f = new FormData();
-      f.append('registration_number', users.u3.registration_number);
       f.append('payment_method', prov);
       f.append('transaction_id', txn);
       if (purpose) { f.append('payment_type', 'occasional'); f.append('purpose', purpose); f.append('amount', String(amount)); }
@@ -478,7 +477,7 @@ async function integrationTests() {
     check('obligated months with no rate are rate_not_set (unknown, NOT ৳0)',
       s4a.rate_not_set_months.length === N && closeTo(s4a.total_due, 0) && s4a.up_to_date === false,
       JSON.stringify(s4a.rate_not_set_months));
-    const payU4 = await call('POST', '/api/payments', { token: tokens.u4, body: { registration_number: users.u4.registration_number, payment_type: 'monthly', amount: 20, months: [W0], sender_number: '01712345678' } });
+    const payU4 = await call('POST', '/api/payments', { token: tokens.u4, body: { payment_type: 'monthly', amount: 20, months: [W0], sender_number: '01712345678' } });
     check('payment for an unpriced month is recorded without inventing a rate (201)', payU4.status === 201, `status ${payU4.status} ${payU4.json?.message || ''}`);
     const mineU4b = await call('GET', '/api/contributions/mine', { token: tokens.u4 });
     const rowW0 = mineU4b.json?.data?.months?.find((m) => m.month === W0);

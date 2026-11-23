@@ -32,6 +32,7 @@ function ContributionCard() {
   const [error, setError] = useState('');
   const [denied, setDenied] = useState(false);
   const [amount, setAmount] = useState('');
+  const [amountCustom, setAmountCustom] = useState(false);
   const [effective, setEffective] = useState(curKey());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -60,16 +61,24 @@ function ContributionCard() {
 
   const summary = data?.summary;
   const configured = !!data?.configured;
-  const allowed = data?.allowed_amounts || [20, 30, 50, 100];
+  const allowed = data?.allowed_amounts || [20, 50, 100];
   const effectiveOptions = Array.from({ length: 13 }, (_, i) => shiftKey(curKey(), i));
 
   const submitRate = async (e) => {
     e.preventDefault();
-    if (!amount) return setMsg({ kind: 'error', text: 'Choose a monthly contribution amount.' });
+    const amt = Number(amount);
+    if (!Number.isInteger(amt) || amt < 20 || (amountCustom && amt <= 20)) {
+      return setMsg({
+        kind: 'error',
+        text: amountCustom
+          ? 'Typed amount must be more than ৳20 — or choose the ৳20 option.'
+          : 'Enter a monthly contribution of at least ৳20.',
+      });
+    }
     setBusy(true); setMsg(null);
     try {
       const res = await api.post('/api/contributions/mine/rate', {
-        amount: Number(amount), effective_month: effective,
+        amount: amt, effective_month: effective,
       });
       setMsg({ kind: 'success', text: res.message });
       await load();
@@ -109,12 +118,12 @@ function ContributionCard() {
           <span className="mb-1 block text-sm font-medium text-ink">
             {configured ? 'Update monthly contribution' : 'Set monthly contribution'}
           </span>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             {allowed.map((a) => (
               <button
                 key={a}
                 type="button"
-                onClick={() => setAmount(String(a))}
+                onClick={() => { setAmount(String(a)); setAmountCustom(false); }}
                 className={`rounded-lg border px-4 py-2 text-sm font-bold transition ${
                   amount === String(a) ? 'border-forest bg-forest text-white' : 'border-line bg-white text-ink hover:border-forest/50'
                 }`}
@@ -122,6 +131,16 @@ function ContributionCard() {
                 {taka(a)}
               </button>
             ))}
+            <div className="w-40">
+              <Input
+                label="Type amount (৳)"
+                type="number"
+                step="1"
+                placeholder="More than 20"
+                value={amount}
+                onChange={(e) => { setAmountCustom(true); setAmount(e.target.value); }}
+              />
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <div className="w-44">
@@ -231,7 +250,7 @@ export default function Profile() {
         setProfile(r.data.profile);
         setForm({
           first_name: r.data.profile.first_name, last_name: r.data.profile.last_name,
-          phone: r.data.profile.phone || '', registration_number: r.data.profile.registration_number || '',
+          phone: r.data.profile.phone || '',
           ssc_batch: r.data.profile.ssc_batch || '',
           blood_group: r.data.profile.blood_group || '', active_donor: r.data.profile.active_donor ? 'yes' : 'no', profession: r.data.profile.profession || '',
           institute: r.data.profile.institute || '', college: r.data.profile.college || '',
@@ -293,7 +312,6 @@ export default function Profile() {
           <Input label="First name *" required value={form.first_name} onChange={set('first_name')} />
           <Input label="Last name *" required value={form.last_name} onChange={set('last_name')} />
           <Input label="Phone" value={form.phone} onChange={set('phone')} />
-          <Input label="Registration Number *" placeholder="Your academic registration number" required maxLength={50} value={form.registration_number} onChange={set('registration_number')} />
           <Input label="SSC batch" type="number" value={form.ssc_batch} onChange={set('ssc_batch')} />
           <Select label="Blood group" value={form.blood_group} onChange={set('blood_group')}>
             <option value="">— Select —</option>

@@ -1,5 +1,5 @@
 import {
-  findMemberByRegNumber, getMonthlyStatus, createTestPayment,
+  getSelfMember, getMonthlyStatus, createTestPayment,
   listMyPayments, listAllPayments, getMemberPaymentSummary,
   submitManualPayment, reviewPayment, listProviderInfo,
 } from '../services/paymentService.js';
@@ -13,10 +13,11 @@ export const providers = asyncHandler(async (_req, res) => {
 
 /**
  * POST /api/payments/manual — submit a MANUAL bKash/Nagad/Rocket/bank payment.
- * multipart/form-data: registration_number, payment_type (monthly|occasional),
- * payment_method (bkash|nagad|rocket|bank), amount, billing_month (monthly) or
- * purpose (+ optional event_id, description) (occasional), transaction_id,
- * optional sender_number, optional image (payment screenshot).
+ * multipart/form-data: payment_type (monthly|occasional), payment_method,
+ * amount, billing_month (monthly) or purpose (+ optional event_id, description)
+ * (occasional), transaction_id, optional sender_number, optional image.
+ * The payer is always the logged-in member — no registration number and no
+ * paying on behalf of someone else.
  * ALWAYS creates a PENDING payment — a submission is never an instant success;
  * an admin/authority must verify the Transaction ID.
  */
@@ -44,19 +45,11 @@ export const review = asyncHandler(async (req, res) => {
 });
 
 /**
- * GET /api/payments/lookup/:regNumber — resolve a member by registration number.
- * Privacy: members may only resolve their OWN registration number (the payment
- * UI pre-fills the payer); admins/authority may resolve anyone. Same message
- * as an unknown number so reg-number enumeration cannot confirm existence.
+ * GET /api/payments/me — the logged-in member's own payment record.
+ * Identity comes from the token; no registration number lookup.
  */
-export const lookup = asyncHandler(async (req, res) => {
-  const member = await findMemberByRegNumber(req.params.regNumber);
-  const isStaff = req.user.role_name === 'ADMIN' || req.user.role_name === 'AUTHORITY';
-  if (!isStaff && Number(member.user_id) !== Number(req.user.user_id)) {
-    const err = new Error('Invalid registration number. Please check your registration number.');
-    err.status = 404;
-    throw err;
-  }
+export const me = asyncHandler(async (req, res) => {
+  const member = await getSelfMember(req.user.user_id);
   res.json({ success: true, data: { member } });
 });
 
@@ -75,7 +68,8 @@ export const monthlyStatus = asyncHandler(async (req, res) => {
 
 /**
  * POST /api/payments — record a TEST payment.
- * Body: { registration_number, payment_type: monthly|occasional, ... }
+ * Body: { payment_type: monthly|occasional, ... }. Always recorded for the
+ * logged-in account itself.
  * The simulated charge only happens after the client's explicit confirm step.
  */
 export const create = asyncHandler(async (req, res) => {

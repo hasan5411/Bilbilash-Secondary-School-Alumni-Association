@@ -18,7 +18,7 @@ export const updateProfile = [
       first_name: { type: 'string', required: true, max: 60 },
       last_name: { type: 'string', required: true, max: 60 },
       phone: { type: 'string', max: 20 },
-      registration_number: { type: 'string', required: true, max: 50 },
+      registration_number: { type: 'string', max: 50 },
       ssc_batch: { type: 'int', min: 1960, max: 2100 },
       blood_group: { type: 'enum', values: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] },
       profession: { type: 'string', max: 120 },

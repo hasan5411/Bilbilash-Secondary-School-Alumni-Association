@@ -48,7 +48,7 @@ function MemberSummaryModal({ userId, onClose }) {
               <div className="mt-3 rounded-lg bg-mint p-3 text-sm">
                 <div className="font-bold text-ink">{data.member.first_name} {data.member.last_name}</div>
                 <div className="text-ink-soft">
-                  Reg No: <b>{data.member.registration_number || '—'}</b> · Batch: <b>{data.member.ssc_batch ?? '—'}</b> · Phone: <b>{data.member.phone || '—'}</b>
+                  Batch: <b>{data.member.ssc_batch ?? '—'}</b> · Phone: <b>{data.member.phone || '—'}</b>
                 </div>
               </div>
 
@@ -108,7 +108,6 @@ function ReviewModal({ payment, onClose, onDone }) {
 
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div><dt className="text-ink-soft">Member</dt><dd className="font-semibold">{payment.first_name} {payment.last_name}</dd></div>
-            <div><dt className="text-ink-soft">Reg No</dt><dd className="font-semibold">{payment.reg_number || '—'}</dd></div>
             <div><dt className="text-ink-soft">Type</dt><dd className="font-semibold capitalize">{payment.payment_type}</dd></div>
             <div>
               <dt className="text-ink-soft">{payment.payment_type === 'monthly' ? 'Billing month' : 'Purpose'}</dt>
@@ -157,7 +156,7 @@ export default function AdminPayments() {
   const [rows, setRows] = useState(null);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState({ reg: '', name: '', batch: '', phone: '', payment_type: '', purpose: '', status: 'success', from: '', to: '', limit: 25, offset: 0 });
+  const [filters, setFilters] = useState({ name: '', batch: '', phone: '', payment_type: '', purpose: '', status: 'success', from: '', to: '', limit: 25, offset: 0 });
   const [summaryId, setSummaryId] = useState(null);
   const [reviewPayment, setReviewPayment] = useState(null);
 
@@ -181,7 +180,6 @@ export default function AdminPayments() {
 
       <Card className="mb-4">
         <div className="grid gap-3 sm:grid-cols-4">
-          <Input label="Registration No" value={filters.reg} onChange={set('reg')} placeholder="e.g. BSA-" />
           <Input label="Name" value={filters.name} onChange={set('name')} />
           <Input label="SSC Batch" type="number" value={filters.batch} onChange={set('batch')} />
           <Input label="Phone / Sender" value={filters.phone} onChange={set('phone')} />
@@ -224,7 +222,7 @@ export default function AdminPayments() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b bg-mint text-left text-xs uppercase text-ink-soft">
-                <th className="px-3 py-2">Reg No</th><th className="px-3 py-2">Member</th><th className="px-3 py-2">Batch</th>
+                <th className="px-3 py-2">Member</th><th className="px-3 py-2">Batch</th>
                 <th className="px-3 py-2">Type</th><th className="px-3 py-2">Billing Month / Purpose</th><th className="px-3 py-2">Amount</th>
                 <th className="px-3 py-2">Sender</th><th className="px-3 py-2">Method</th><th className="px-3 py-2">Transaction</th>
                 <th className="px-3 py-2">Date</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Actions</th>
@@ -233,7 +231,6 @@ export default function AdminPayments() {
             <tbody>
               {rows.map((p) => (
                 <tr key={p.payment_id} className={`border-b last:border-0 ${p.status === 'pending' ? 'bg-amber-50/40' : ''}`}>
-                  <td className="px-3 py-2 font-mono text-xs">{p.reg_number || '—'}</td>
                   <td className="px-3 py-2">{p.first_name} {p.last_name}</td>
                   <td className="px-3 py-2 text-ink-soft">{p.ssc_batch ?? '—'}</td>
                   <td className="px-3 py-2 capitalize">{p.payment_type}</td>

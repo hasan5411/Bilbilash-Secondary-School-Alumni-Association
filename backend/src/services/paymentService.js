@@ -5,10 +5,9 @@ import { getProvider, listProviderInfo, MANUAL_PROVIDERS, PAYMENT_PROVIDERS } fr
 import { notify, notifyModerators, NOTIFICATION_TYPES } from './notificationService.js';
 // ONE authoritative contribution/due service — the payment page, profile,
 // admin summary and Analytics all agree because they all call it.
-import { MONTHLY_AMOUNTS, MONTHLY_MAX, getMemberLedger, getMemberRates, rateForMonth, planAllocation, getPayableOutstanding } from './contributionService.js';
+import { getMemberLedger, getMemberRates, rateForMonth, planAllocation, getPayableOutstanding } from './contributionService.js';
 
 export { listProviderInfo };
-export { MONTHLY_AMOUNTS, MONTHLY_MAX }; // re-exported: contributionService owns the values
 const round2 = (n) => Math.round(Number(n) * 100) / 100;
 export const OCCASIONAL_MAX = 1000000;
 export const PURPOSES = ['event_contribution', 'donation', 'help_fund', 'emergency_fund', 'other'];
@@ -34,18 +33,36 @@ const shiftKey = (key, delta) => {
   return toKey(Math.floor(abs / 12), (abs % 12) + 1);
 };
 
-/** Member lookup by the unique registration number — approved members only. */
-export async function findMemberByRegNumber(regNumber) {
-  const reg = String(regNumber || '').trim();
-  if (!reg) throw badRequest('Registration number is required');
+/** Payer identity is the login account — registration number is not required. */
+async function getPaymentMember(userId) {
   const member = await queryOne(
-    `SELECT u.user_id, u.first_name, u.last_name, u.registration_number, u.phone, u.status,
+    `SELECT u.user_id, u.first_name, u.last_name, u.phone, u.status,
             p.ssc_batch
        FROM users u LEFT JOIN profiles p ON p.user_id = u.user_id
-      WHERE u.registration_number = ? AND u.status = 'approved' LIMIT 1`,
-    [reg]
+      WHERE u.user_id = ? LIMIT 1`,
+    [userId]
   );
-  if (!member) throw notFound('Invalid registration number. Please check your registration number.');
+  if (!member) throw notFound('Member not found');
+  return member;
+}
+
+/**
+ * Who the payment is for: every account pays only for itself. The payer is
+ * always the login account (token identity) — no target member, no
+ * registration number.
+ */
+async function resolvePayer(actor) {
+  const userId = Number(actor.user_id);
+  if (!Number.isInteger(userId) || userId <= 0) throw badRequest('Invalid member id');
+  const member = await getPaymentMember(userId);
+  if (member.status !== 'approved') throw badRequest('Only approved members can make payments');
+  return member;
+}
+
+/** Own payment member record for the payment page (no registration number needed). */
+export async function getSelfMember(userId) {
+  const member = await getPaymentMember(userId);
+  if (member.status !== 'approved') throw badRequest('Only approved members can make payments');
   return member;
 }
 
@@ -167,15 +184,8 @@ async function assertMonthsPayable(userId, monthKeys) {
  * transaction writes the payment + per-month rows (all-or-nothing).
  */
 export async function createTestPayment(actor, data) {
-  const reg = String(data.registration_number || '').trim();
-  if (!reg) throw badRequest('Registration number is required');
-
-  // Ownership rule: members pay for themselves; admins/authority may pay for others.
-  const isStaff = actor.role_name === 'ADMIN' || actor.role_name === 'AUTHORITY';
-  const member = await findMemberByRegNumber(reg);
-  if (!isStaff && Number(member.user_id) !== Number(actor.user_id)) {
-    throw badRequest('You can only make payments for your own registration number');
-  }
+  // Identity comes from the login token — you can only pay for yourself.
+  const member = await resolvePayer(actor);
 
   const senderNumber = String(data.sender_number || '').trim();
   if (!/^01[3-9]\d{8}$/.test(senderNumber)) {
@@ -188,8 +198,8 @@ export async function createTestPayment(actor, data) {
   let paymentId;
   if (data.payment_type === 'monthly') {
     const perMonth = Number(data.amount);
-    if (!MONTHLY_AMOUNTS.includes(perMonth)) {
-      throw badRequest(`Monthly contribution must be one of: ${MONTHLY_AMOUNTS.join(', ')} (max ৳${MONTHLY_MAX})`);
+    if (!Number.isInteger(perMonth) || perMonth < 20) {
+      throw badRequest('Monthly contribution must be a whole amount of at least ৳20');
     }
     const monthKeys = Array.isArray(data.months) ? [...new Set(data.months.map((m) => String(m).trim()))] : [];
     if (!monthKeys.length) throw badRequest('Select at least one due month to pay');
@@ -217,10 +227,10 @@ export async function createTestPayment(actor, data) {
 
     paymentId = await withTransaction(async (conn) => {
       const [res] = await conn.query(
-        `INSERT INTO payments (user_id, reg_number, payment_type, amount, payment_method, sender_number, transaction_id, status)
-         VALUES (?, ?, 'monthly', ?, 'test', ?, ?, 'success')
+        `INSERT INTO payments (user_id, payment_type, amount, payment_method, sender_number, transaction_id, status)
+         VALUES (?, 'monthly', ?, 'test', ?, ?, 'success')
          RETURNING payment_id`,
-        [member.user_id, member.registration_number, total, senderNumber, txnId]
+        [member.user_id, total, senderNumber, txnId]
       );
       for (const a of plan.allocations) {
         await conn.query(
@@ -259,11 +269,11 @@ export async function createTestPayment(actor, data) {
         registrationId = Number(linked.registration_id);
       }
       const [res] = await conn.query(
-        `INSERT INTO payments (user_id, reg_number, payment_type, purpose, event_id, registration_id, amount, payment_method, sender_number, transaction_id, status, description)
-         VALUES (?, ?, 'occasional', ?, ?, ?, ?, 'test', ?, ?, 'success', ?)
+        `INSERT INTO payments (user_id, payment_type, purpose, event_id, registration_id, amount, payment_method, sender_number, transaction_id, status, description)
+         VALUES (?, 'occasional', ?, ?, ?, ?, 'test', ?, ?, 'success', ?)
          RETURNING payment_id`,
         [
-          member.user_id, member.registration_number, purpose, eventId, registrationId,
+          member.user_id, purpose, eventId, registrationId,
           amount, senderNumber, txnId,
           String(data.description || '').trim().slice(0, 255) || null,
         ]
@@ -281,7 +291,7 @@ export async function createTestPayment(actor, data) {
 }
 
 const PAYMENT_SELECT = `
-  SELECT pay.payment_id, pay.reg_number, pay.payment_type, pay.purpose, pay.event_id,
+  SELECT pay.payment_id, pay.payment_type, pay.purpose, pay.event_id,
          pay.registration_id,
          e.title AS event_title, pay.amount, pay.payment_method, pay.sender_number,
          pay.transaction_id, pay.payment_date, pay.billing_month, pay.screenshot_path,
@@ -380,15 +390,8 @@ const TXN_ID_RE = /^[A-Za-z0-9_-]{6,64}$/;
  * error; the UNIQUE violation (SQLSTATE 23505) is caught as a concurrency safety net.
  */
 export async function submitManualPayment(actor, data, screenshotFile = null) {
-  const reg = String(data.registration_number || '').trim();
-  if (!reg) throw badRequest('Registration number is required');
-
-  // Ownership rule: members pay for themselves; admins/authority may pay for others.
-  const isStaff = actor.role_name === 'ADMIN' || actor.role_name === 'AUTHORITY';
-  const member = await findMemberByRegNumber(reg);
-  if (!isStaff && Number(member.user_id) !== Number(actor.user_id)) {
-    throw badRequest('You can only make payments for your own registration number');
-  }
+  // Identity comes from the login token — you can only pay for yourself.
+  const member = await resolvePayer(actor);
 
   // registration_id is a registration-specific LINK (event contributions only).
   const hasLink = data.registration_id !== undefined && data.registration_id !== null && data.registration_id !== '';
@@ -437,8 +440,8 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
   try {
     if (data.payment_type === 'monthly') {
       const perMonth = Number(data.amount);
-      if (!MONTHLY_AMOUNTS.includes(perMonth)) {
-        throw badRequest(`Monthly contribution must be one of: ${MONTHLY_AMOUNTS.join(', ')} (max ৳${MONTHLY_MAX})`);
+      if (!Number.isInteger(perMonth) || perMonth < 20) {
+        throw badRequest('Monthly contribution must be a whole amount of at least ৳20');
       }
       // Manual flow pays ONE billing month+year per submission. It is stored on
       // the payment row (billing_month) — deliberately separate from
@@ -457,10 +460,10 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
 
       paymentId = await withTransaction(async (conn) => {
         const [res] = await conn.query(
-          `INSERT INTO payments (user_id, reg_number, payment_type, amount, payment_method, sender_number, transaction_id, billing_month, screenshot_path, status, description)
-           VALUES (?, ?, 'monthly', ?, ?, ?, ?, ?, ?, 'pending', ?)
+          `INSERT INTO payments (user_id, payment_type, amount, payment_method, sender_number, transaction_id, billing_month, screenshot_path, status, description)
+           VALUES (?, 'monthly', ?, ?, ?, ?, ?, ?, 'pending', ?)
            RETURNING payment_id`,
-          [member.user_id, member.registration_number, perMonth, providerKey, senderNumber || null, txnId, billingMonth, screenshotPath, description]
+          [member.user_id, perMonth, providerKey, senderNumber || null, txnId, billingMonth, screenshotPath, description]
         );
         return res.insertId;
       });
@@ -489,11 +492,11 @@ export async function submitManualPayment(actor, data, screenshotFile = null) {
           registrationId = Number(linked.registration_id);
         }
         const [res] = await conn.query(
-          `INSERT INTO payments (user_id, reg_number, payment_type, purpose, event_id, registration_id, amount, payment_method, sender_number, transaction_id, screenshot_path, status, description)
-           VALUES (?, ?, 'occasional', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+          `INSERT INTO payments (user_id, payment_type, purpose, event_id, registration_id, amount, payment_method, sender_number, transaction_id, screenshot_path, status, description)
+           VALUES (?, 'occasional', ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
            RETURNING payment_id`,
           [
-            member.user_id, member.registration_number, purpose, eventId, registrationId,
+            member.user_id, purpose, eventId, registrationId,
             amount, providerKey, senderNumber || null, txnId, screenshotPath, description,
           ]
         );
@@ -688,7 +691,6 @@ export async function listMyPayments(userId) {
 export async function listAllPayments(filters = {}) {
   const where = [];
   const params = [];
-  if (filters.reg) { where.push('pay.reg_number LIKE ?'); params.push(`%${filters.reg}%`); }
   if (filters.name) { where.push('(u.first_name LIKE ? OR u.last_name LIKE ?)'); params.push(`%${filters.name}%`, `%${filters.name}%`); }
   if (filters.batch) { where.push('p.ssc_batch = ?'); params.push(Number(filters.batch)); }
   if (filters.phone) { where.push('(u.phone LIKE ? OR pay.sender_number LIKE ?)'); params.push(`%${filters.phone}%`, `%${filters.phone}%`); }
@@ -728,7 +730,7 @@ export async function listAllPayments(filters = {}) {
 /** Admin per-member summary: totals + current-year monthly status (DB-derived). */
 export async function getMemberPaymentSummary(userId) {
   const member = await queryOne(
-    `SELECT u.user_id, u.first_name, u.last_name, u.registration_number, u.phone, p.ssc_batch
+    `SELECT u.user_id, u.first_name, u.last_name, u.phone, p.ssc_batch
        FROM users u LEFT JOIN profiles p ON p.user_id = u.user_id WHERE u.user_id = ? LIMIT 1`,
     [userId]
   );

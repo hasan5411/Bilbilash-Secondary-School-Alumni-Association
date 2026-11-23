@@ -37,11 +37,14 @@ export const setMyRate = asyncHandler(async (req, res) => {
     amount: body.amount,
     effectiveMonth: body.effective_month || undefined,
   });
-  res.status(result.unchanged ? 200 : 201).json({
+  const msg = result.unchanged
+    ? 'That contribution rate is already effective from this month.'
+    : result.updated
+      ? `Monthly contribution for ${result.rate.effective_month} updated to ৳${Number(result.rate.amount)}. Earlier months keep their historical rates.`
+      : `Monthly contribution set to ৳${Number(result.rate.amount)} from ${result.rate.effective_month}. Previous months keep their historical rates.`;
+  res.status(result.unchanged || result.updated ? 200 : 201).json({
     success: true,
-    message: result.unchanged
-      ? 'That contribution rate is already effective from this month.'
-      : `Monthly contribution set to ৳${Number(result.rate.amount)} from ${result.rate.effective_month}. Previous months keep their historical rates.`,
+    message: msg,
     data: { rate: result.rate },
   });
 });
@@ -99,11 +102,14 @@ export const setMemberRate = asyncHandler(async (req, res) => {
     amount: body.amount,
     effectiveMonth: body.effective_month || undefined,
   });
-  res.status(result.unchanged ? 200 : 201).json({
+  const msg = result.unchanged
+    ? 'That contribution rate is already effective from this month.'
+    : result.updated
+      ? `Contribution rate for ${result.rate.effective_month} updated to ৳${Number(result.rate.amount)}.`
+      : `Contribution rate set to ৳${Number(result.rate.amount)} from ${result.rate.effective_month}.`;
+  res.status(result.unchanged || result.updated ? 200 : 201).json({
     success: true,
-    message: result.unchanged
-      ? 'That contribution rate is already effective from this month.'
-      : `Contribution rate set to ৳${Number(result.rate.amount)} from ${result.rate.effective_month}.`,
+    message: msg,
     data: { rate: result.rate },
   });
 });

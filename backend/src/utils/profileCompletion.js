@@ -12,17 +12,21 @@
  * validation: registration still requires only its own fields (authController.js)
  * and nothing here makes an optional field mandatory for account creation.
  *
- * Included (all 14 form inputs):
+ * Included (all 13 form inputs):
  *
- *   first_name, last_name, phone, registration_number, ssc_batch,
- *   blood_group, active_donor, profession, institute, present_address,
- *   permanent_address, bio, facebook_url, profile_photo
+ *   first_name, last_name, phone, ssc_batch, blood_group, active_donor,
+ *   profession, institute, present_address, permanent_address, bio,
+ *   facebook_url, profile_photo
  *
  * Deliberately excluded (each for a stated reason — never arbitrary):
  *
  *   - email, password_hash, OTPs, tokens, status, role, ids, timestamps:
  *     authentication / system-managed fields (email is shown read-only but is
  *     NOT an input of the update form).
+ *   - registration_number: removed from the registration and profile forms on
+ *     2026-11-23 (no feature depends on it). Legacy stored values are kept and
+ *     still shown to admins, but the field is no longer part of the form, so
+ *     it must not lower anyone's percentage.
  *   - contribution_start_month: set by admins, not by the member's profile form.
  *   - address: deprecated column, superseded by present_address/permanent_address.
  *   - college, university: added to the form on 2026-11-18 as optional education
@@ -41,7 +45,6 @@ export const COMPLETION_FIELDS = Object.freeze([
   'first_name',
   'last_name',
   'phone',
-  'registration_number',
   'ssc_batch',
   'blood_group',
   'active_donor',
@@ -66,7 +69,6 @@ const FIELD_RULES = Object.freeze({
   first_name: { type: 'string', max: 60 },
   last_name: { type: 'string', max: 60 },
   phone: { type: 'string', max: 20 },
-  registration_number: { type: 'string', max: 50 },
   ssc_batch: { type: 'int', min: 1960, max: 2100 },
   blood_group: { type: 'blood_group' },
   active_donor: { type: 'boolean' },

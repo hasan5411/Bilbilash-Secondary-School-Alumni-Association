@@ -358,8 +358,10 @@ async function main() {
   const noticeId = notice.json?.data?.notice_id;
   const helpId = help.json?.data?.help_id;
   const visionId = vision.json?.data?.vision_id;
-  // Events with registration/payment history must NOT be hard-deleted anymore
-  // (lifecycle rule), so the plain-delete case uses a history-free event.
+  // Events that received money must NOT be hard-deleted (lifecycle rule:
+  // cancel/archive instead) — that block is covered by eventLifecycleTest.
+  // Free/unpaid registrations DO cascade with the event, so the plain-delete
+  // case can use either an event with no registrations or one with unpaid ones.
   const emptyEv = await call('POST', '/api/events', {
     token: authToken,
     body: { title: `SMOKE-${stamp} Empty Event`, event_date: '2030-01-02', capacity: 5 },
@@ -390,7 +392,7 @@ async function main() {
   const delP = await call('DELETE', `/api/polls/${pollId}`, { token: authToken });
   check('authority deletes poll (200)', delP.status === 200, `status ${delP.status} ${delP.json?.message || ''}`);
   const delEv = await call('DELETE', `/api/events/${eventId}`, { token: authToken });
-  check('event with registration history cannot be hard-deleted (409)', delEv.status === 409, `status ${delEv.status} ${delEv.json?.message || ''}`);
+  check('event with only unpaid registrations is deletable (200)', delEv.status === 200, `status ${delEv.status} ${delEv.json?.message || ''}`);
   const delEmptyEv = await call('DELETE', `/api/events/${emptyEventId}`, { token: authToken });
   check('authority deletes a history-free event (200)', delEmptyEv.status === 200, `status ${delEmptyEv.status} ${delEmptyEv.json?.message || ''}`);
   const delV = await call('DELETE', `/api/visions/${visionId}`, { token: authToken });
@@ -413,8 +415,8 @@ async function main() {
   const votesGone = await dbQuery(`SELECT COUNT(*) AS c FROM poll_votes WHERE poll_id = ?`, [pollId]);
   const optsGone = await dbQuery(`SELECT COUNT(*) AS c FROM poll_options WHERE poll_id = ?`, [pollId]);
   check('poll options + votes cascade with the poll', Number(votesGone[0].c) === 0 && Number(optsGone[0].c) === 0, `votes ${votesGone[0].c} options ${optsGone[0].c}`);
-  const regsKept = await dbQuery(`SELECT COUNT(*) AS c FROM event_registrations WHERE event_id = ?`, [eventId]);
-  check('refused event deletion preserves registration history', Number(regsKept[0].c) === 1, `count ${regsKept[0].c}`);
+  const regsGone = await dbQuery(`SELECT COUNT(*) AS c FROM event_registrations WHERE event_id = ?`, [eventId]);
+  check('unpaid registrations cascade with the deleted event', Number(regsGone[0].c) === 0, `count ${regsGone[0].c}`);
 
   const deadNotifs = await dbQuery(
     `SELECT COUNT(*) AS c FROM notifications
@@ -427,13 +429,21 @@ async function main() {
     `SELECT COUNT(*) AS c FROM notifications WHERE related_entity_type = 'event' AND related_entity_id = ?`,
     [eventId]
   );
-  check('event notifications preserved while the event exists', Number(evNotifs[0].c) >= 1, `count ${evNotifs[0].c}`);
+  check('event notifications pruned with the deleted event', Number(evNotifs[0].c) === 0, `count ${evNotifs[0].c}`);
 
-  // The lifecycle replacement for hard-deleting an event with history: archive.
-  const archEv = await call('PUT', `/api/events/${eventId}/archive`, { token: authToken });
-  check('event with history can be archived instead (200)', archEv.status === 200, `status ${archEv.status} ${archEv.json?.message || ''}`);
+  // Archive is the lifecycle alternative to hard-deleting an event that must
+  // stay on record (e.g. it received payment). Verify it hides the event from
+  // the public listing while keeping the row.
+  const archEv = await call('POST', '/api/events', {
+    token: authToken,
+    body: { title: `SMOKE-${stamp} Archivable Event`, event_date: '2030-01-03', capacity: 5 },
+  });
+  check('authority creates an archivable event -> 201', archEv.status === 201, `status ${archEv.status} ${archEv.json?.message || ''}`);
+  const archEventId = archEv.json?.data?.event_id;
+  const archRes = await call('PUT', `/api/events/${archEventId}/archive`, { token: authToken });
+  check('event can be archived instead of deleted (200)', archRes.status === 200, `status ${archRes.status} ${archRes.json?.message || ''}`);
   const memberEvents = (await call('GET', '/api/events')).json?.data?.events || [];
-  check('archived event hidden from the public listing', !memberEvents.some((e) => e.event_id === eventId), 'still visible');
+  check('archived event hidden from the public listing', !memberEvents.some((e) => e.event_id === archEventId), 'still visible');
 
   section('12) Blood group search');
   const blood = await call('GET', '/api/blood/search?blood_group=O%2B');
@@ -447,29 +457,29 @@ async function main() {
   const crossRead = await call('PUT', `/api/notifications/${otherNotifId}/read`, { token: tokenC });
   check('cannot mark another user\'s notification read (403/404)', [403, 404].includes(crossRead.status), `status ${crossRead.status}`);
 
-  section('13b) Payments: reg-number lookup, monthly dues, test payment, privacy');
+  section('13b) Payments: token-based payer, monthly dues, test payment, privacy');
   const PM_YEAR = new Date().getFullYear();
   const pm = (m) => `${PM_YEAR}-${String(m).padStart(2, '0')}`;
   const curMonth = new Date().getMonth() + 1;
 
-  const lookup = await call('GET', `/api/payments/lookup/${encodeURIComponent(users.B.registration_number)}`, { token: authToken });
-  check('payments: lookup by registration number', lookup.status === 200 && lookup.json?.data?.member?.user_id === ids.B, `status ${lookup.status}`);
-  const lookupBad = await call('GET', '/api/payments/lookup/NOPE-404', { token: authToken });
-  check('payments: unknown reg number -> 404', lookupBad.status === 404, `status ${lookupBad.status}`);
+  const meRes = await call('GET', '/api/payments/me', { token: tokenB });
+  check('payments: /me resolves the logged-in member without a reg number', meRes.status === 200 && meRes.json?.data?.member?.user_id === ids.B, `status ${meRes.status}`);
+  const lookupGone = await call('GET', `/api/payments/lookup/${encodeURIComponent(users.B.registration_number)}`, { token: authToken });
+  check('payments: registration-number lookup endpoint removed (404)', lookupGone.status === 404, `status ${lookupGone.status}`);
 
   const pStatus0 = await call('GET', '/api/payments/monthly-status', { token: tokenB });
   check('payments: status lists Jan..current month (server date)', pStatus0.status === 200 && pStatus0.json?.data?.months?.length === curMonth, `months ${pStatus0.json?.data?.months?.length}`);
   check('payments: future months never listed', pStatus0.json.data.months.every((m) => m.month <= pm(curMonth)));
 
   const payMonth = pm(2); // February — stable regardless of the current month
-  const pOK = await call('POST', '/api/payments', { token: tokenB, body: { registration_number: users.B.registration_number, payment_type: 'monthly', amount: 50, months: [payMonth], sender_number: '01712345678' } });
+  const pOK = await call('POST', '/api/payments', { token: tokenB, body: { payment_type: 'monthly', amount: 50, months: [payMonth], sender_number: '01712345678' } });
   check('payments: ৳50 monthly test payment -> 201 success', pOK.status === 201 && pOK.json?.data?.payment?.status === 'success', `status ${pOK.status} ${pOK.json?.message}`);
   check('payments: covered month recorded', pOK.json?.data?.payment?.covered_months?.[0]?.month === payMonth);
-  const pDup = await call('POST', '/api/payments', { token: tokenB, body: { registration_number: users.B.registration_number, payment_type: 'monthly', amount: 50, months: [payMonth], sender_number: '01712345678' } });
+  const pDup = await call('POST', '/api/payments', { token: tokenB, body: { payment_type: 'monthly', amount: 50, months: [payMonth], sender_number: '01712345678' } });
   check('payments: duplicate month rejected (409)', pDup.status === 409, `status ${pDup.status}`);
-  const pBig = await call('POST', '/api/payments', { token: tokenB, body: { registration_number: users.B.registration_number, payment_type: 'monthly', amount: 150, months: [pm(3)], sender_number: '01712345678' } });
-  check('payments: monthly ৳150 rejected (> max 100)', pBig.status === 400, `status ${pBig.status}`);
-  const pOcc = await call('POST', '/api/payments', { token: tokenB, body: { registration_number: users.B.registration_number, payment_type: 'occasional', purpose: 'donation', amount: 500, sender_number: '01812345678', description: 'Smoke donation' } });
+  const pBig = await call('POST', '/api/payments', { token: tokenB, body: { payment_type: 'monthly', amount: 19, months: [pm(3)], sender_number: '01712345678' } });
+  check('payments: monthly amount below ৳20 rejected', pBig.status === 400 && /at least ৳20/.test(pBig.json?.message || ''), `status ${pBig.status} ${pBig.json?.message}`);
+  const pOcc = await call('POST', '/api/payments', { token: tokenB, body: { payment_type: 'occasional', purpose: 'donation', amount: 500, sender_number: '01812345678', description: 'Smoke donation' } });
   check('payments: occasional donation ৳500 -> 201', pOcc.status === 201, `status ${pOcc.status} ${pOcc.json?.message}`);
 
   const pMine = await call('GET', '/api/payments/mine', { token: tokenB });
@@ -489,7 +499,6 @@ async function main() {
 
   const mp = (provKey, txn, extra = {}) => {
     const f = new FormData();
-    f.append('registration_number', users.D.registration_number);
     f.append('payment_type', extra.type || 'monthly');
     f.append('payment_method', provKey);
     if (extra.type === 'occasional') {

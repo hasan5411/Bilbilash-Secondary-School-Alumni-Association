@@ -31,8 +31,7 @@ import { audit } from './statsService.js';
 
 // Single source of truth for allowed contribution amounts (reused by
 // paymentService and the contribution API).
-export const MONTHLY_AMOUNTS = [20, 30, 50, 100];
-export const MONTHLY_MAX = 100;
+export const MONTHLY_AMOUNTS = [20, 50, 100]; // quick-pick presets; typed amounts must be > 20
 
 const pad = (n) => String(n).padStart(2, '0');
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -460,14 +459,16 @@ export async function getMemberRates(userId) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Create the next rate row for a member. APPEND-ONLY: previous rows are never
- * touched, so historic dues keep their historic rates.
- * Effective month must never be retroactive (>= current month).
+ * Create the next rate row for a member. APPEND-ONLY for months already under
+ * way: past months (and the current month once it has a rate) are never
+ * rewritten, so historic dues keep their historic rates. A STRICTLY FUTURE
+ * month may still be revised before it starts — nothing has been charged
+ * against it yet.
  */
 export async function setContributionRate(actor, targetUserId, { amount, effectiveMonth, source = null }) {
   const rateAmount = Number(amount);
-  if (!MONTHLY_AMOUNTS.includes(rateAmount)) {
-    throw badRequest(`Monthly contribution must be one of: ${MONTHLY_AMOUNTS.join(', ')} (max ৳${MONTHLY_MAX})`);
+  if (!Number.isInteger(rateAmount) || rateAmount < 20) {
+    throw badRequest('Monthly contribution must be a whole amount of at least ৳20');
   }
   const effective = String(effectiveMonth || currentYM()).trim();
   if (!isValidMonthKey(effective)) throw badRequest('effective_month must be a valid YYYY-MM month');
@@ -491,6 +492,8 @@ export async function setContributionRate(actor, targetUserId, { amount, effecti
     throw forbidden('You can only change your own monthly contribution');
   }
 
+  const rateSource = source || (isStaff && Number(actor.user_id) !== Number(targetUserId) ? 'admin' : 'member');
+
   const [existingForMonth] = await query(
     `SELECT rate_id, amount FROM member_monthly_rates WHERE user_id = ? AND effective_month = ? LIMIT 1`,
     [targetUserId, effective]
@@ -501,10 +504,36 @@ export async function setContributionRate(actor, targetUserId, { amount, effecti
       const [row] = await query(`SELECT * FROM member_monthly_rates WHERE rate_id = ?`, [existingForMonth.rate_id]);
       return { rate: row, unchanged: true };
     }
-    throw conflict(`A different contribution rate is already effective from ${monthLabel(effective)}. Each month can hold only one rate.`);
+    // The current month is locked once a rate exists: payments may already be
+    // settling against it. A future month can still be revised by replacing
+    // that single row — no past month's due is affected.
+    if (monthIdx(effective) <= monthIdx(cur)) {
+      throw conflict(`The rate for ${monthLabel(effective)} is already set and that month has started. Choose a future month to change the amount.`);
+    }
+    const previousAmount = Number(existingForMonth.amount);
+    await query(
+      `UPDATE member_monthly_rates SET amount = ?, source = ?, set_by = ? WHERE rate_id = ?`,
+      [rateAmount, rateSource, actor.user_id, existingForMonth.rate_id]
+    );
+
+    try {
+      await audit(actor.user_id, 'contribution_rate_updated', 'user', targetUserId,
+        { amount: rateAmount, previous_amount: previousAmount, effective_month: effective, source: rateSource });
+    } catch { /* audit is best-effort */ }
+
+    if (Number(actor.user_id) !== Number(targetUserId)) {
+      try {
+        await notify(targetUserId, 'Monthly contribution updated',
+          `Your monthly contribution is now ৳${rateAmount} from ${monthLabel(effective)}.`,
+          NOTIFICATION_TYPES.CONTRIBUTION_UPDATED,
+          { entityType: 'contribution', entityId: targetUserId, actorId: actor.user_id });
+      } catch { /* best-effort */ }
+    }
+
+    const [row] = await query(`SELECT * FROM member_monthly_rates WHERE rate_id = ?`, [existingForMonth.rate_id]);
+    return { rate: row, unchanged: false, updated: true };
   }
 
-  const rateSource = source || (isStaff && Number(actor.user_id) !== Number(targetUserId) ? 'admin' : 'member');
   let rateId;
   try {
     const res = await query(

@@ -8,7 +8,7 @@ export default function Register() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', password: '', phone: '',
-    registration_number: '', ssc_batch: '', blood_group: '', profession: '', institute: '',
+    ssc_batch: '', blood_group: '', profession: '', institute: '',
     present_address: '', permanent_address: '',
   });
   const [error, setError] = useState('');
@@ -51,7 +51,6 @@ export default function Register() {
           <Input label="Password * (min 8 chars)" type="password" required minLength={8} value={form.password} onChange={set('password')} />
           <Input label="Phone number" value={form.phone} onChange={set('phone')} />
           <Input label="SSC batch (year)" type="number" min="1960" max="2100" value={form.ssc_batch} onChange={set('ssc_batch')} />
-          <Input label="Registration Number *" placeholder="Input your SSC Roll or Registration number" required maxLength={50} value={form.registration_number} onChange={set('registration_number')} />
           <Select label="Blood group" value={form.blood_group} onChange={set('blood_group')}>
             <option value="">— Select —</option>
             {BLOOD_GROUPS.map((b) => <option key={b} value={b}>{b}</option>)}

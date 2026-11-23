@@ -12,7 +12,7 @@ export const register = asyncHandler(async (req, res) => {
     email: { type: 'string', required: true, max: 120, email: true },
     password: { type: 'string', required: true, min: 8, max: 72 },
     phone: { type: 'string', max: 20 },
-    registration_number: { type: 'string', required: true, max: 50 },
+    registration_number: { type: 'string', max: 50 },
     ssc_batch: { type: 'int', min: 1960, max: 2100 },
     blood_group: { type: 'enum', values: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] },
     profession: { type: 'string', max: 120 },

@@ -137,7 +137,7 @@ async function main() {
     const amount = g === 'overpay' ? 100 : g === 'partial' ? 20 : rateOf(i);
     const r = await call('POST', '/api/payments', {
       token: tokens[i],
-      body: { registration_number: demoReg(i), payment_type: 'monthly', amount, months: [CUR], sender_number: '01712345678' },
+      body: { payment_type: 'monthly', amount, months: [CUR], sender_number: '01712345678' },
     });
     if (r.status === 201 && r.json?.data?.payment?.status === 'success') payOk++; else { payFail++; if (payFail <= 3) console.log(`  member ${i} (${g}) -> ${r.status} ${r.json?.message || ''}`); }
   }
@@ -146,7 +146,6 @@ async function main() {
   // Manual pending submissions for the pending/rejected/approved_manual groups (30).
   const fdManual = (i, txn, prov = 'bkash') => {
     const f = new FormData();
-    f.append('registration_number', demoReg(i));
     f.append('payment_type', 'monthly');
     f.append('payment_method', prov);
     f.append('amount', String(rateOf(i)));
@@ -171,7 +170,7 @@ async function main() {
   check('duplicate Transaction ID rejected (409)', dupManual.status === 409, `status ${dupManual.status}`);
   const dupMonth = await call('POST', '/api/payments', {
     token: tokens[5],
-    body: { registration_number: demoReg(5), payment_type: 'monthly', amount: rateOf(5), months: [CUR], sender_number: '01712345678' },
+    body: { payment_type: 'monthly', amount: rateOf(5), months: [CUR], sender_number: '01712345678' },
   });
   check('already-settled month cannot be paid again (409)', dupMonth.status === 409, `status ${dupMonth.status}`);
 
@@ -253,7 +252,7 @@ async function main() {
   check(`acceptance: dues = ৳${nMonths * 20} across ${nMonths} month(s) from ${w0}`, closeTo(dues99.json?.data?.summary?.total_due, nMonths * 20), `got ${dues99.json?.data?.summary?.total_due}`);
   const pay99 = await call('POST', '/api/payments', {
     token: accToken,
-    body: { registration_number: `${DEMO_REG_PREFIX}ACC903`, payment_type: 'monthly', amount: 100, months: [CUR], sender_number: '01712345678' },
+    body: { payment_type: 'monthly', amount: 100, months: [CUR], sender_number: '01712345678' },
   });
   check('acceptance: ৳100 payment approved instantly (201 success)', pay99.status === 201 && pay99.json?.data?.payment?.status === 'success', `status ${pay99.status}`);
   const alloc99 = await sql(conn,
@@ -372,7 +371,7 @@ async function main() {
   check('gallery upload/approve/permission-delete', gal.status === 201 && galMod.status === 200 && [401, 403, 404].includes(galMemberDel.status) && galAuthDel.status === 200,
     `${gal.status}/${galMod.status}/${galMemberDel.status}/${galAuthDel.status}`);
   // Donation vs monthly separation.
-  const don = await call('POST', '/api/payments', { token: t2, body: { registration_number: demoReg(17), payment_type: 'occasional', purpose: 'donation', amount: 250, sender_number: '01812345678', description: 'DEMO donation' } });
+  const don = await call('POST', '/api/payments', { token: t2, body: { payment_type: 'occasional', purpose: 'donation', amount: 250, sender_number: '01812345678', description: 'DEMO donation' } });
   check('donation recorded as occasional (201)', don.status === 201, `status ${don.status}`);
   const donLedger = await call('GET', '/api/contributions/mine', { token: t2 });
   check('donation does not change monthly dues/extra', donLedger.status === 200 && closeTo(donLedger.json?.data?.summary?.total_due, 0) && closeTo(donLedger.json?.data?.summary?.total_extra, 0),

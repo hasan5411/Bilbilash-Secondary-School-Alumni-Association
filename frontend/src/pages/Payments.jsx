@@ -5,7 +5,8 @@ import { Card, Button, Input, Select, Textarea, Spinner, Alert, PageHeader, Badg
 import { useAuth } from '../context/AuthContext.jsx';
 import { detectPlatform, providerAppTarget } from '../utils/paymentAppLinks.js';
 
-const MONTHLY_AMOUNTS = [20, 30, 50, 100];
+const MONTHLY_AMOUNTS = [20, 50, 100];
+
 const PURPOSE_LABELS = {
   event_contribution: 'Event Contribution',
   donation: 'Donation',
@@ -178,7 +179,6 @@ function Receipt({ payment, onClose }) {
       </div>
       <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div><dt className="text-ink-soft">Payment ID</dt><dd className="font-semibold">#{payment.payment_id}</dd></div>
-        <div><dt className="text-ink-soft">Registration No</dt><dd className="font-semibold">{payment.reg_number}</dd></div>
         <div><dt className="text-ink-soft">Member</dt><dd className="font-semibold">{payment.first_name} {payment.last_name}</dd></div>
         <div><dt className="text-ink-soft">Type</dt><dd className="font-semibold capitalize">{payment.payment_type}</dd></div>
         <div className="sm:col-span-2">
@@ -212,7 +212,7 @@ function PendingReceipt({ payment, provider, onClose }) {
       </Alert>
       <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div><dt className="text-ink-soft">Payment ID</dt><dd className="font-semibold">#{payment.payment_id}</dd></div>
-        <div><dt className="text-ink-soft">Member</dt><dd className="font-semibold">{payment.first_name} {payment.last_name} ({payment.reg_number})</dd></div>
+        <div><dt className="text-ink-soft">Member</dt><dd className="font-semibold">{payment.first_name} {payment.last_name}</dd></div>
         <div><dt className="text-ink-soft">Type</dt><dd className="font-semibold capitalize">{payment.payment_type}</dd></div>
         <div>
           <dt className="text-ink-soft">{payment.payment_type === 'monthly' ? 'Billing month' : 'Purpose'}</dt>
@@ -238,15 +238,16 @@ function PendingReceipt({ payment, provider, onClose }) {
 
 export default function Payments() {
   const { user } = useAuth();
-  const [regInput, setRegInput] = useState('');
+  // Payer identity comes from the login token — every account pays only for itself.
   const [member, setMember] = useState(null);
-  const [lookupError, setLookupError] = useState('');
-  const [looking, setLooking] = useState(false);
+  const [memberLoading, setMemberLoading] = useState(true);
+  const [memberError, setMemberError] = useState('');
 
   const [tab, setTab] = useState('monthly');
   const [status, setStatus] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(null);
   const [amount, setAmount] = useState(null);
+  const [amountCustom, setAmountCustom] = useState(false);
   const [purpose, setPurpose] = useState('');
   const [occAmount, setOccAmount] = useState('');
   const [occDesc, setOccDesc] = useState('');
@@ -288,7 +289,7 @@ export default function Payments() {
   // "My Payments" loads automatically for the logged-in user — the token-scoped
   // /mine endpoint resolves ownership server-side, no registration number needed.
   useEffect(() => {
-    loadHistory();
+    loadSelf();
     api.get('/api/payments/providers')
       .then((r) => { if (r.data?.providers?.length) setProviders(r.data.providers); })
       .catch(() => { /* keep fallback provider info */ });
@@ -296,28 +297,30 @@ export default function Payments() {
 
   const provider = useMemo(() => providers.find((p) => p.key === providerKey) || null, [providers, providerKey]);
 
-  const findMember = async (e) => {
-    if (e) e.preventDefault();
-    setLooking(true); setLookupError(''); setMember(null); setReceipt(null);
-    setCheckout(null); setPendingReceipt(null); setSelectedMonth(null); setAmount(null); setStatus(null);
-    setMyRegs([]); setRegistrationId('');
+  const resetFlow = () => {
+    setMemberError(''); setPayError(''); setReceipt(null); setReview(null);
+    setCheckout(null); setPendingReceipt(null); setSelectedMonth(null); setAmount(null); setAmountCustom(false);
+    setStatus(null); setMyRegs([]); setRegistrationId(''); setPreview(null); setPreviewError('');
+  };
+
+  // Load the logged-in member's own payment context.
+  const loadSelf = async () => {
+    setMemberLoading(true); resetFlow();
     try {
-      const res = await api.get(`/api/payments/lookup/${encodeURIComponent(regInput.trim())}`);
-      setMember(res.data.member);
-      const [st, ev] = await Promise.all([
-        api.get(`/api/payments/monthly-status?user_id=${res.data.member.user_id}`),
+      const [meRes, st, ev] = await Promise.all([
+        api.get('/api/payments/me'),
+        api.get('/api/payments/monthly-status'),
         api.get('/api/events').catch(() => ({ data: { events: [] } })),
       ]);
+      setMember(meRes.data.member);
       setStatus(st.data);
       setEvents(ev.data.events || []);
-      if (user && Number(res.data.member.user_id) === Number(user.user_id)) {
-        api.get('/api/events/mine/registrations')
-          .then((r) => setMyRegs(r.data.registrations || []))
-          .catch(() => setMyRegs([]));
-      }
+      api.get('/api/events/mine/registrations')
+        .then((r) => setMyRegs(r.data.registrations || []))
+        .catch(() => setMyRegs([]));
       loadHistory();
-    } catch (err) { setLookupError(err.message); }
-    finally { setLooking(false); }
+    } catch (err) { setMemberError(err.message); }
+    finally { setMemberLoading(false); }
   };
 
   const dueMonths = useMemo(() => (status ? status.months.filter((m) => !m.paid && !m.pending) : []), [status]);
@@ -339,15 +342,13 @@ export default function Payments() {
     });
   }, [linkableRegs]);
 
-  // Live allocation preview while the member picks an amount. Silent on failure
-  // (e.g. a non-staff user peeking at someone else) — the payment itself is
-  // validated server-side regardless.
+  // Live allocation preview while the member picks an amount. Silent on failure;
+  // the payment itself is validated server-side regardless.
   useEffect(() => {
     let alive = true;
     setPreview(null); setPreviewError('');
     if (tab !== 'monthly' || !member || !amount) return () => { alive = false; };
     const qs = new URLSearchParams({ amount: String(amount) });
-    if (user && Number(member.user_id) !== Number(user.user_id)) qs.set('user_id', String(member.user_id));
     api.get(`/api/contributions/preview?${qs}`)
       .then((r) => { if (alive) setPreview(r.data); })
       .catch((e) => { if (alive) setPreviewError(e.message || ''); });
@@ -355,8 +356,7 @@ export default function Payments() {
   }, [tab, member, amount, user]);
 
   const refreshStatus = async () => {
-    if (!member) return;
-    const st = await api.get(`/api/payments/monthly-status?user_id=${member.user_id}`);
+    const st = await api.get('/api/payments/monthly-status');
     setStatus(st.data);
   };
 
@@ -368,7 +368,11 @@ export default function Payments() {
     setSenderNumber(member.phone || '');
     if (tab === 'monthly') {
       if (!selectedMonth) return setPayError('Select the billing month you are paying for.');
-      if (!amount) return setPayError('Choose a monthly contribution amount.');
+      if (!Number.isInteger(amount) || amount < 20 || (amountCustom && amount <= 20)) {
+        return setPayError(amountCustom
+          ? 'Typed amount must be more than ৳20 — or choose the ৳20 option.'
+          : 'Enter a monthly contribution of at least ৳20.');
+      }
       setCheckout({ type: 'monthly', billingMonth: selectedMonth, perMonth: amount, total: amount });
     } else {
       if (!purpose) return setPayError('Select a purpose.');
@@ -408,7 +412,6 @@ export default function Payments() {
     setBusy(true); setPayError('');
     try {
       const fd = new FormData();
-      fd.append('registration_number', member.registration_number);
       fd.append('payment_type', checkout.type);
       fd.append('payment_method', provider.key);
       fd.append('transaction_id', txn);
@@ -458,8 +461,8 @@ export default function Payments() {
     setBusy(true); setPayError('');
     try {
       const body = review.type === 'monthly'
-        ? { registration_number: member.registration_number, payment_type: 'monthly', amount: review.perMonth, months: review.months, sender_number: senderNumber }
-        : { registration_number: member.registration_number, payment_type: 'occasional', purpose: review.purpose, amount: review.amount, event_id: review.eventId || undefined, description: review.description, sender_number: senderNumber };
+        ? { payment_type: 'monthly', amount: review.perMonth, months: review.months, sender_number: senderNumber }
+        : { payment_type: 'occasional', purpose: review.purpose, amount: review.amount, event_id: review.eventId || undefined, description: review.description, sender_number: senderNumber };
       const res = await api.post('/api/payments', body);
       setReceipt(res.data.payment);
       setReview(null);
@@ -474,25 +477,19 @@ export default function Payments() {
     <div className="mx-auto max-w-3xl">
       <PageHeader title="Payments" subtitle="Monthly contributions and occasional payments via bKash, Nagad, Rocket, or bank transfer — every payment is verified before it counts." />
 
-      {/* Step 1: find member by registration number */}
-      <Card>
-        <form onSubmit={findMember} className="flex flex-wrap items-end gap-3">
-          <div className="min-w-56 flex-1">
-            <Input label="Registration Number" placeholder="e.g. BSA-2026-00125" value={regInput} onChange={(e) => setRegInput(e.target.value)} required />
-          </div>
-          <Button type="submit" disabled={looking}>{looking ? 'Searching…' : 'Continue'}</Button>
-        </form>
-        {lookupError && <Alert kind="error">{lookupError}</Alert>}
+      {memberLoading && <Spinner />}
+      {memberError && <Alert kind="error">{memberError}</Alert>}
 
-        {member && (
-          <div className="mt-4 rounded-lg bg-mint p-3 text-sm">
+      {member && (
+        <Card className="mt-4">
+          <div className="rounded-lg bg-mint p-3 text-sm">
             <div className="font-bold text-ink">{member.first_name} {member.last_name}</div>
             <div className="mt-0.5 text-ink-soft">
-              Reg No: <b>{member.registration_number}</b> · SSC Batch: <b>{member.ssc_batch ?? '—'}</b> · Phone: <b>{member.phone || '—'}</b>
+              SSC Batch: <b>{member.ssc_batch ?? '—'}</b> · Phone: <b>{member.phone || '—'}</b>
             </div>
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {member && (
         <Card className="mt-4">
@@ -538,13 +535,13 @@ export default function Payments() {
               </div>
 
               <div className="mt-4">
-                <span className="mb-1 block text-sm font-medium text-ink">Monthly contribution (per month, max ৳100)</span>
-                <div className="flex flex-wrap gap-2">
+                <span className="mb-1 block text-sm font-medium text-ink">Monthly contribution</span>
+                <div className="flex flex-wrap items-end gap-2">
                   {MONTHLY_AMOUNTS.map((a) => (
                     <button
                       key={a}
                       type="button"
-                      onClick={() => setAmount(a)}
+                      onClick={() => { setAmount(a); setAmountCustom(false); }}
                       className={`rounded-lg border px-4 py-2 text-sm font-bold transition ${
                         amount === a ? 'border-forest bg-forest text-white' : 'border-line bg-white text-ink hover:border-forest/50'
                       }`}
@@ -552,6 +549,20 @@ export default function Payments() {
                       ৳{a}
                     </button>
                   ))}
+                  <div className="w-40">
+                    <Input
+                      label="Type amount (৳)"
+                      type="number"
+                      step="1"
+                      placeholder="More than 20"
+                      value={amount ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        setAmountCustom(true);
+                        setAmount(raw === '' ? null : Number(raw));
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -758,7 +769,7 @@ export default function Payments() {
               </div>
 
               <div className="mt-4 rounded-lg bg-mint p-3 text-sm">
-                <div className="flex justify-between"><span>Member</span><b>{member.first_name} {member.last_name} ({member.registration_number})</b></div>
+                <div className="flex justify-between"><span>Member</span><b>{member.first_name} {member.last_name}</b></div>
                 <div className="flex justify-between"><span>Type</span><b className="capitalize">{checkout.type}</b></div>
                 <div className="flex justify-between">
                   <span>{checkout.type === 'monthly' ? 'Billing month' : 'Purpose'}</span>
@@ -794,7 +805,7 @@ export default function Payments() {
         <Card className="mt-4">
           <h3 className="font-bold text-ink">Review TEST payment</h3>
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-            <div><dt className="text-ink-soft">Member</dt><dd className="font-semibold">{member.first_name} {member.last_name} ({member.registration_number})</dd></div>
+            <div><dt className="text-ink-soft">Member</dt><dd className="font-semibold">{member.first_name} {member.last_name}</dd></div>
             <div><dt className="text-ink-soft">Type</dt><dd className="font-semibold capitalize">{review.type}</dd></div>
             {review.type === 'monthly'
               ? <div className="col-span-2"><dt className="text-ink-soft">Billing month</dt><dd className="font-semibold">{review.months.map(monthLabel).join(', ')}</dd></div>
