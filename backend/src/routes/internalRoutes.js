@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { expireOverdueRegistrations } from '../services/eventService.js';
+import { applyExtraSettlements } from '../services/contributionService.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 /**
@@ -45,6 +46,27 @@ router.post('/registrations/expire', asyncHandler(async (req, res) => {
   }
   const limit = Number(req.query.limit || req.body?.limit || 200);
   const result = await expireOverdueRegistrations(limit);
+  res.json({ success: true, data: result });
+}));
+
+/**
+ * POST /api/internal/contributions/apply-extra — month-end settlement of unpaid
+ * months from members' extra-contribution pools. Safe to run daily: nothing is
+ * settled before a month's last day, and a repeated run is a no-op.
+ */
+router.post('/contributions/apply-extra', asyncHandler(async (req, res) => {
+  if (!env.cronSecret) {
+    res.status(503).json({
+      success: false,
+      message: 'Extra-contribution settlement endpoint is disabled: CRON_SECRET is not configured.',
+    });
+    return;
+  }
+  if (!secretsMatch(providedSecret(req), env.cronSecret)) {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+    return;
+  }
+  const result = await applyExtraSettlements();
   res.json({ success: true, data: result });
 }));
 

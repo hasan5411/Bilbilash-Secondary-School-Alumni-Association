@@ -276,6 +276,7 @@ export default function Payments() {
 
   const [history, setHistory] = useState(null);
   const [historyError, setHistoryError] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
 
   // Oldest-first allocation preview: shows how the chosen amount will settle
   // confirmed dues before any money moves (GET /api/contributions/preview).
@@ -314,6 +315,7 @@ export default function Payments() {
       ]);
       setMember(meRes.data.member);
       setStatus(st.data);
+      applyAutoSelection(st.data);
       setEvents(ev.data.events || []);
       api.get('/api/events/mine/registrations')
         .then((r) => setMyRegs(r.data.registrations || []))
@@ -323,7 +325,31 @@ export default function Payments() {
     finally { setMemberLoading(false); }
   };
 
-  const dueMonths = useMemo(() => (status ? status.months.filter((m) => !m.paid && !m.pending) : []), [status]);
+  // Auto-pick the OLDEST due month and that month's configured amount from the
+  // server ledger, so neither has to be chosen by hand. The amount is the
+  // month's own remaining requirement (its historical rate), never an invented
+  // value — months without a configured rate stay unselected.
+  const applyAutoSelection = (st) => {
+    const first = (st?.months || []).find((m) => m.status === 'due');
+    if (!first) return;
+    setSelectedMonth(first.month);
+    const suggested = first.remaining ?? first.rate ?? st.current_rate ?? null;
+    if (suggested != null && Number(suggested) > 0) {
+      setAmount(Number(suggested));
+      setAmountCustom(false);
+    }
+  };
+
+  // Choosing another due month re-fills the amount with that month's requirement.
+  const pickMonth = (m) => {
+    if (selectedMonth === m.month) { setSelectedMonth(null); return; }
+    setSelectedMonth(m.month);
+    const suggested = m.remaining ?? m.rate ?? status?.current_rate ?? null;
+    if (suggested != null && Number(suggested) > 0) {
+      setAmount(Number(suggested));
+      setAmountCustom(false);
+    }
+  };
 
   const isSelf = Boolean(member && user && Number(member.user_id) === Number(user.user_id));
   // Only the member's own ACTIVE, UNPAID registrations on an open event can
@@ -358,6 +384,7 @@ export default function Payments() {
   const refreshStatus = async () => {
     const st = await api.get('/api/payments/monthly-status');
     setStatus(st.data);
+    applyAutoSelection(st.data);
   };
 
   const openCheckout = () => {
@@ -511,7 +538,7 @@ export default function Payments() {
                     key={m.month}
                     type="button"
                     disabled={m.paid || m.pending}
-                    onClick={() => setSelectedMonth((prev) => (prev === m.month ? null : m.month))}
+                    onClick={() => pickMonth(m)}
                     className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
                       m.paid
                         ? 'cursor-not-allowed border-emerald-200 bg-emerald-50 text-emerald-700'
@@ -536,6 +563,11 @@ export default function Payments() {
 
               <div className="mt-4">
                 <span className="mb-1 block text-sm font-medium text-ink">Monthly contribution</span>
+                {status.configured === false && (
+                  <p className="mb-1 text-xs text-ink-soft">
+                    No monthly contribution is set yet — set it in <b>My Account</b> to auto-fill this amount.
+                  </p>
+                )}
                 <div className="flex flex-wrap items-end gap-2">
                   {MONTHLY_AMOUNTS.map((a) => (
                     <button
@@ -596,6 +628,11 @@ export default function Payments() {
                   <p className="mt-2 text-xs text-ink-soft">
                     Confirmed dues are settled oldest-first using each month&rsquo;s historical rate. Pending payments never settle a month.
                   </p>
+                  {Number(preview.extra) > 0 && (
+                    <p className="mt-1 text-xs text-ink-soft">
+                      Leftover extra stays on your account: if a month stays unpaid, it is settled automatically on that month&rsquo;s last day once the extra fully covers it.
+                    </p>
+                  )}
                 </div>
               )}
               {previewError && tab === 'monthly' && amount && (
@@ -828,61 +865,73 @@ export default function Payments() {
       {receipt && <Receipt payment={receipt} onClose={() => setReceipt(null)} />}
       {pendingReceipt && <PendingReceipt payment={pendingReceipt.payment} provider={pendingReceipt.provider} onClose={() => setPendingReceipt(null)} />}
 
-      {/* My payments */}
+      {/* My payments — collapsed by default so a long history never floods the page */}
       <h2 className="mt-8 text-lg font-bold text-ink">My Payments</h2>
-      {history && (
-        <div className="mt-2 grid grid-cols-3 gap-3">
-          <Card className="text-center"><div className="text-xl font-black text-moss">{taka(history.totals.monthly_total)}</div><div className="text-xs font-semibold uppercase text-ink-soft">Monthly (approved)</div></Card>
-          <Card className="text-center"><div className="text-xl font-black text-moss">{taka(history.totals.occasional_total)}</div><div className="text-xs font-semibold uppercase text-ink-soft">Occasional (approved)</div></Card>
-          <Card className="text-center"><div className="text-xl font-black text-moss">{taka(Number(history.totals.monthly_total) + Number(history.totals.occasional_total))}</div><div className="text-xs font-semibold uppercase text-ink-soft">Total</div></Card>
-        </div>
-      )}
-      <div className="mt-3">
-        {!history && !historyError && <Spinner />}
-        {historyError && !history && <Alert kind="error">{historyError}</Alert>}
-        {history && history.payments.length === 0 && <EmptyState title="No payments yet." hint="Use the form above to make your first payment." />}
-        {history && history.payments.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-line bg-white">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b bg-mint text-left text-xs uppercase text-ink-soft">
-                  <th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Billing Month / Purpose</th>
-                  <th className="px-3 py-2">Amount</th><th className="px-3 py-2">Method</th><th className="px-3 py-2">Transaction</th><th className="px-3 py-2">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.payments.map((p) => (
-                  <tr key={p.payment_id} className="border-b last:border-0">
-                    <td className="px-3 py-2 text-ink-soft">{fmtDate(p.payment_date)}</td>
-                    <td className="px-3 py-2 capitalize">{p.payment_type}</td>
-                    <td className="px-3 py-2">
-                      {p.payment_type === 'monthly'
-                        ? ((p.covered_months || []).length
-                          ? (p.covered_months || []).map((m) => monthLabel(m.month)).join(', ')
-                          : (p.billing_month ? monthLabel(p.billing_month) : '—'))
-                        : PURPOSE_LABELS[p.purpose] || p.purpose}
-                    </td>
-                    <td className="px-3 py-2 font-semibold">{taka(p.amount)}</td>
-                    <td className="px-3 py-2 text-xs">{METHOD_LABELS[p.payment_method] || p.payment_method}</td>
-                    <td className="px-3 py-2 font-mono text-xs">
-                      {p.transaction_id}
-                      {p.screenshot_path && <a className="ml-1 text-moss underline" href={mediaUrl(p.screenshot_path)} target="_blank" rel="noreferrer" title="View screenshot">📷</a>}
-                    </td>
-                    <td className="px-3 py-2">
-                      <Badge value={statusLabel(p.status)} />
-                      {(p.reviewed_at || p.review_note) && (
-                        <div className="mt-1 text-[10px] leading-tight text-ink-soft">
-                          {p.reviewed_at ? fmtDateTime(p.reviewed_at) : ''}{p.review_note ? ` — ${p.review_note}` : ''}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <Button
+        variant="outline"
+        className="mt-2"
+        onClick={() => setShowHistory((v) => !v)}
+        aria-expanded={showHistory}
+      >
+        {showHistory ? 'Hide Payments History' : 'My Payments History'}
+      </Button>
+      {showHistory && (
+        <>
+          {history && (
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              <Card className="text-center"><div className="text-xl font-black text-moss">{taka(history.totals.monthly_total)}</div><div className="text-xs font-semibold uppercase text-ink-soft">Monthly (approved)</div></Card>
+              <Card className="text-center"><div className="text-xl font-black text-moss">{taka(history.totals.occasional_total)}</div><div className="text-xs font-semibold uppercase text-ink-soft">Occasional (approved)</div></Card>
+              <Card className="text-center"><div className="text-xl font-black text-moss">{taka(Number(history.totals.monthly_total) + Number(history.totals.occasional_total))}</div><div className="text-xs font-semibold uppercase text-ink-soft">Total</div></Card>
+            </div>
+          )}
+          <div className="mt-3">
+            {!history && !historyError && <Spinner />}
+            {historyError && !history && <Alert kind="error">{historyError}</Alert>}
+            {history && history.payments.length === 0 && <EmptyState title="No payments yet." hint="Use the form above to make your first payment." />}
+            {history && history.payments.length > 0 && (
+              <div className="overflow-x-auto rounded-xl border border-line bg-white">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-mint text-left text-xs uppercase text-ink-soft">
+                      <th className="px-3 py-2">Date</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Billing Month / Purpose</th>
+                      <th className="px-3 py-2">Amount</th><th className="px-3 py-2">Method</th><th className="px-3 py-2">Transaction</th><th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.payments.map((p) => (
+                      <tr key={p.payment_id} className="border-b last:border-0">
+                        <td className="px-3 py-2 text-ink-soft">{fmtDate(p.payment_date)}</td>
+                        <td className="px-3 py-2 capitalize">{p.payment_type}</td>
+                        <td className="px-3 py-2">
+                          {p.payment_type === 'monthly'
+                            ? ((p.covered_months || []).length
+                              ? (p.covered_months || []).map((m) => monthLabel(m.month)).join(', ')
+                              : (p.billing_month ? monthLabel(p.billing_month) : '—'))
+                            : PURPOSE_LABELS[p.purpose] || p.purpose}
+                        </td>
+                        <td className="px-3 py-2 font-semibold">{taka(p.amount)}</td>
+                        <td className="px-3 py-2 text-xs">{METHOD_LABELS[p.payment_method] || p.payment_method}</td>
+                        <td className="px-3 py-2 font-mono text-xs">
+                          {p.transaction_id}
+                          {p.screenshot_path && <a className="ml-1 text-moss underline" href={mediaUrl(p.screenshot_path)} target="_blank" rel="noreferrer" title="View screenshot">📷</a>}
+                        </td>
+                        <td className="px-3 py-2">
+                          <Badge value={statusLabel(p.status)} />
+                          {(p.reviewed_at || p.review_note) && (
+                            <div className="mt-1 text-[10px] leading-tight text-ink-soft">
+                              {p.reviewed_at ? fmtDateTime(p.reviewed_at) : ''}{p.review_note ? ` — ${p.review_note}` : ''}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }

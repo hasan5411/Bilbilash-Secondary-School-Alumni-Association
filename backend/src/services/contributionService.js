@@ -1,4 +1,4 @@
-import { query, queryOne } from '../db/pool.js';
+import { query, queryOne, withTransaction } from '../db/pool.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/errors.js';
 import { notify, NOTIFICATION_TYPES } from './notificationService.js';
 import { audit } from './statsService.js';
@@ -452,6 +452,149 @@ export async function getAllocationPreview(userId, amount) {
 export async function getMemberRates(userId) {
   return query(`SELECT rate_id, amount, effective_month, source, created_at
                   FROM member_monthly_rates WHERE user_id = ? ORDER BY effective_month, rate_id`, [userId]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Extra-contribution month-end settlement                              */
+/* ------------------------------------------------------------------ */
+
+const ymOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+const isLastDayOfMonth = (d) => d.getDate() === new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+
+/**
+ * Settle unpaid month(s) from a member's EXTRA-contribution pool once a month
+ * has reached its last day — but only when the pool covers that month IN FULL
+ * (a month is never settled partially this way). Dues settle oldest-first and
+ * the waterfall stops at the first month the pool cannot fully cover; money
+ * that cannot cover a month stays EXTRA (the user's ৳20 example).
+ *
+ * The money is RE-LABELLED, never re-received: the taken amount is removed
+ * from the source allocation's amount AND extra_amount (so the month it
+ * originally covered keeps its exact allocation) and re-parked on the newly
+ * settled month under the same payment. Every payment's row total and every
+ * member's total stay unchanged.
+ *
+ * Idempotent: after a settlement the pool is smaller and the month is paid,
+ * so a repeated run does nothing. `now` is injectable for tests.
+ */
+export async function applyExtraSettlements({ now = new Date(), userIds = null } = {}) {
+  const cur = ymOf(now);
+  const eligibleTo = isLastDayOfMonth(now) ? cur : shiftMonth(cur, -1);
+  const phaseStart = `${eligibleTo.slice(0, 4)}-01`;
+  const empty = { eligible_to: eligibleTo, members: 0, settled: [] };
+
+  // The cron endpoint settles every member; an explicit list narrows the run
+  // (used by tests so they can never touch a real member's pool).
+  const scope = Array.isArray(userIds) && userIds.length ? userIds.map(Number) : null;
+  const poolUsers = await query(
+    `SELECT user_id, SUM(extra_amount) AS pool
+       FROM monthly_payment_details
+      WHERE extra_amount > 0${scope ? ` AND user_id IN (${scope.map(() => '?').join(',')})` : ''}
+      GROUP BY user_id
+     HAVING SUM(extra_amount) > 0`,
+    scope || []
+  );
+
+  const report = { ...empty, members: poolUsers.length };
+  for (const row of poolUsers) {
+    const userId = Number(row.user_id);
+    const settled = await withTransaction((conn) =>
+      settleMemberFromExtra(conn, userId, { phaseStart, eligibleTo }));
+    for (const s of settled) {
+      try {
+        await notify(userId, 'Monthly contribution settled from extra contribution',
+          `৳${s.amount} of your extra contribution settled ${monthLabel(s.month)}.`,
+          NOTIFICATION_TYPES.CONTRIBUTION_UPDATED,
+          { entityType: 'contribution', entityId: userId });
+      } catch { /* best-effort */ }
+      try {
+        await audit(null, 'extra_contribution_settled', 'user', userId, s);
+      } catch { /* audit is best-effort */ }
+      report.settled.push({ user_id: userId, ...s });
+    }
+  }
+  return report;
+}
+
+async function settleMemberFromExtra(conn, userId, { phaseStart, eligibleTo }) {
+  const [poolRows] = await conn.query(
+    `SELECT id, payment_id, payment_month, amount, extra_amount
+       FROM monthly_payment_details
+      WHERE user_id = ? AND extra_amount > 0
+      ORDER BY payment_month, id
+      FOR UPDATE`,
+    [userId]
+  );
+  let balance = round2(poolRows.reduce((a, r) => a + Number(r.extra_amount), 0));
+  if (balance <= 0) return [];
+
+  const [rates] = await conn.query(
+    `SELECT amount, effective_month FROM member_monthly_rates
+      WHERE user_id = ? ORDER BY effective_month, rate_id`,
+    [userId]
+  );
+  const [paidRows] = await conn.query(
+    `SELECT payment_month, SUM(amount) AS amount, SUM(extra_amount) AS extra_amount
+       FROM monthly_payment_details WHERE user_id = ?
+      GROUP BY payment_month ORDER BY payment_month`,
+    [userId]
+  );
+  const [pendingRows] = await conn.query(
+    `SELECT billing_month FROM payments
+      WHERE user_id = ? AND payment_type = 'monthly' AND status = 'pending' AND billing_month IS NOT NULL`,
+    [userId]
+  );
+  const [memberRows] = await conn.query(
+    `SELECT p.contribution_start_month FROM users u
+       LEFT JOIN profiles p ON p.user_id = u.user_id WHERE u.user_id = ? LIMIT 1`,
+    [userId]
+  );
+
+  const start = resolveContributionStart({
+    explicitStart: memberRows[0]?.contribution_start_month,
+    earliestPaidMonth: paidRows[0]?.payment_month,
+    firstRateMonth: rates[0]?.effective_month,
+  });
+  const ledger = buildLedger({
+    start,
+    rates,
+    paid: new Map(paidRows.map((r) => [r.payment_month, r])),
+    pending: new Map(pendingRows.filter((r) => r.billing_month).map((r) => [r.billing_month, r])),
+    fromKey: phaseStart,
+    toKey: eligibleTo,
+  });
+  const outstanding = eligibleOutstandingMonths(ledger, { phaseStart, phaseEnd: eligibleTo });
+
+  const settled = [];
+  for (const m of outstanding) {
+    if (balance <= 0) break;
+    const remaining = round2(Number(m.required) - Number(m.allocated || 0));
+    if (remaining <= 0) continue;
+    if (balance < remaining) break; // full cover only — keeps oldest-first priority
+
+    let need = remaining;
+    while (need > 0 && poolRows.length) {
+      const src = poolRows[0];
+      const avail = round2(Number(src.extra_amount));
+      if (avail <= 0) { poolRows.shift(); continue; }
+      const take = Math.min(need, avail);
+      await conn.query(
+        `UPDATE monthly_payment_details SET amount = amount - ?, extra_amount = extra_amount - ? WHERE id = ?`,
+        [take, take, src.id]
+      );
+      await conn.query(
+        `INSERT INTO monthly_payment_details (payment_id, user_id, payment_month, amount, extra_amount)
+         VALUES (?, ?, ?, ?, 0)`,
+        [src.payment_id, userId, m.month, take]
+      );
+      src.extra_amount = round2(avail - take);
+      need = round2(need - take);
+      if (src.extra_amount <= 0) poolRows.shift();
+    }
+    balance = round2(balance - remaining);
+    settled.push({ month: m.month, amount: round2(remaining) });
+  }
+  return settled;
 }
 
 /* ------------------------------------------------------------------ */

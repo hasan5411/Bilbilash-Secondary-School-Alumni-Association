@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "init-db": "node src/db/initDb.js",
     "contribution-test": "node tests/contributionTest.js",
+    "extra-settle-test": "node tests/extraAutoSettleTest.js",
     "authority:set-password": "node src/db/setAuthorityPassword.js",
     "smoke-test": "node tests/smokeTest.js",
     "otp-delivery-test": "node tests/otpDeliveryTest.js",

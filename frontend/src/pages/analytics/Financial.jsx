@@ -5,7 +5,7 @@ import { api } from '../../api/client.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { Card, Input, Button, Alert } from '../../components/ui.jsx';
 import { useAnalytics } from './useAnalytics.js';
-import { KpiCard, Note, SectionLoading, SectionError, RefreshError, UpdatingBar } from './bits.jsx';
+import { KpiCard, SectionLoading, SectionError, RefreshError, UpdatingBar } from './bits.jsx';
 
 const cap = (s) => String(s).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -318,17 +318,6 @@ export default function Financial({ filters, refreshKey, onYears }) {
 
       {/* ---------- Member-wise due report (staff only) ---------- */}
       {isAdmin && <MemberDuesReport refreshKey={refreshKey} />}
-
-      <Note>
-        Calculation rules — <b>Paid</b>: SUM(monthly_payment_details) where the underlying payment was approved
-        (status = 'success'); allocations are grouped per member per month, so the same money can never be
-        counted twice. <b>Due</b>: each obligated member × each month priced with the rate effective for THAT
-        month, minus approved allocations; payments settle the OLDEST outstanding months first and only the
-        remainder becomes Extra Contribution. Pending/rejected transactions never settle a month and are
-        excluded from every KPI above. Months with no configured rate and members with an unknown contribution
-        start are reported separately and never priced. <b>Donations</b>: occasional payments, reported
-        separately. Scope: {data.scope.scope_label}.
-      </Note>
     </div>
   );
 }

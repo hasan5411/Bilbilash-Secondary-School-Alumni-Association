@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { PageHeader, Button, Select, Alert } from '../../components/ui.jsx';
+import { PageHeader, Button, Select } from '../../components/ui.jsx';
 import Financial from './Financial.jsx';
 import Alumni from './Alumni.jsx';
 import Donors from './Donors.jsx';
@@ -109,13 +109,6 @@ export default function Analytics() {
       {/* ---------- Section ---------- */}
       <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label}>
         {sections[tab]}
-      </div>
-
-      <div className="mt-6">
-        <Alert kind="info">
-          All numbers are aggregates (counts and sums) returned by the secured <code>/api/analytics</code> endpoints.
-          Personal payment records, transaction IDs and other members&rsquo; details are never part of this dashboard.
-        </Alert>
       </div>
     </div>
   );
