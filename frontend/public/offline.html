@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0F4C3A" />
+    <title>BSSAA — Offline</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #F4F7F5;
+        color: #1E293B;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      }
+      main {
+        width: 100%;
+        max-width: 420px;
+        padding: 32px 28px;
+        text-align: center;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(15, 76, 58, 0.08);
+      }
+      img { width: 88px; height: 88px; border-radius: 20px; }
+      h1 { margin: 18px 0 6px; font-size: 22px; color: #0F4C3A; }
+      p { margin: 0; font-size: 15px; line-height: 1.6; color: #475569; }
+      button {
+        margin-top: 22px;
+        padding: 11px 22px;
+        font: inherit;
+        font-weight: 700;
+        color: #FFFFFF;
+        background: #0F4C3A;
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(1.1); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/icon-192.png" alt="BSSAA" />
+      <h1>You are offline</h1>
+      <p>
+        The BSSAA app needs an internet connection to load alumni, payment and
+        community data. Reconnect and try again.
+      </p>
+      <button type="button" onclick="window.location.reload()">Try again</button>
+    </main>
+  </body>
+</html>

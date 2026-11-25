@@ -11,7 +11,9 @@ const BACKEND = 'http://localhost:5000';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    host: '0.0.0.0',
     port: 5173,
+    strictPort: true,
 
     // Cloudflare QUICK tunnels (trycloudflare.com) mint a NEW random hostname
     // on every restart (e.g. gave-reactions-juan-strips-…), so pinning one

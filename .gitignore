@@ -25,3 +25,7 @@ Thumbs.db
 
 # Generated reconciliation artifact (may contain payment test data)
 backend/reconciliation-report.json
+
+# Local HTTPS PWA testing (private keys and CA material must never enter git)
+frontend/.certs/
+frontend/vite.https.config.js

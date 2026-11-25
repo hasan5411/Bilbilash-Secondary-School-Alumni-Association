@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { Card, Spinner, Alert } from '../components/ui.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import InstallAppButton from '../components/InstallAppButton.jsx';
 import heroImg from '../assets/hero.jpg';
 
 const FACEBOOK_URL = 'https://www.facebook.com/share/g/1F9UbsYEn5/';
@@ -163,6 +164,7 @@ export default function Home() {
                 </a>
               ))}
             </div>
+            <InstallAppButton />
           </div>
 
           <div>
